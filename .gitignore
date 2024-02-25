@@ -9,7 +9,7 @@
 .history
 .svn/
 migrate_working_dir/
-
+assets/models/best_yolov5l.torchscript
 # IntelliJ related
 *.iml
 *.ipr
