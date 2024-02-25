@@ -1,0 +1,14 @@
+Orange_Bad
+Orange_Good
+Pomegranate_Bad
+Pomegranate_Good
+apple_bad
+apple_good
+banana_bad
+banana_good
+fruits
+guaba_good
+guava_bad
+guava_good
+lime_bad
+lime_good
