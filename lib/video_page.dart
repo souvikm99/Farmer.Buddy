@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_pytorch/flutter_pytorch.dart';
 import 'dart:async';
 import 'scraps/test_overlay.dart';
+import 'dart:math' as math;
 
 import 'main.dart'; // Ensure this import points to your main.dart where 'cameras' list is defined
 
@@ -25,6 +26,7 @@ class _VideoPageState extends State<VideoPage> {
   int frameSkipCount = 0;
   Timer? _debounce;
   String inferenceTime = "Inference time: 0ms"; // Variable to store inference time
+  EuclideanDistTracker tracker = EuclideanDistTracker();
 
   @override
   void initState() {
@@ -48,7 +50,7 @@ class _VideoPageState extends State<VideoPage> {
   }
 
   void initCamera() {
-    cameraController = CameraController(cameras![0], ResolutionPreset.low);
+    cameraController = CameraController(cameras![0], ResolutionPreset.high);
     cameraController.initialize().then((_) {
       if (!mounted) {
         return;
@@ -115,6 +117,8 @@ class _VideoPageState extends State<VideoPage> {
       ));
     }
 
+    tracker.update(newBoxes);
+
     if (!mounted) return; // Check if the widget is still in the tree before calling setState
     updateBoxes(newBoxes);
     isWorking = false;
@@ -164,7 +168,7 @@ class _VideoPageState extends State<VideoPage> {
               child: Text(inferenceTime, // Display the inference time
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.yellowAccent,
+                    color: Colors.red,
                     backgroundColor: Colors.black54,
                   )),
             ),
@@ -183,6 +187,7 @@ class Box {
   final Color color;
   final String className;
   final double score;
+  int? id; // Nullable to accommodate boxes not yet assigned an ID
 
   Box({
     required this.top,
@@ -192,8 +197,10 @@ class Box {
     required this.color,
     required this.className,
     required this.score,
+    this.id,
   });
 }
+
 
 class BoxPainter extends CustomPainter {
   final List<Box> boxes;
@@ -208,19 +215,86 @@ class BoxPainter extends CustomPainter {
       ..strokeWidth = 3.0;
 
     for (var box in boxes) {
+      // Draw the rectangle
       canvas.drawRect(Rect.fromLTWH(box.left, box.top, box.width, box.height), paint);
 
-      final String displayText = '${box.className} ${(box.score * 100).toStringAsFixed(2)}%';
-      final textStyle = TextStyle(color: Colors.yellow, fontSize: 12);
+      // Prepare the text to display. Include the ID if available.
+      final String displayText = '${box.id != null ? "ID: ${box.id}, " : ""}${box.className} ${(box.score * 100).toStringAsFixed(2)}%';
+      final textStyle = TextStyle(color: Colors.red, fontSize: 12, backgroundColor: Colors.black54);
       final textSpan = TextSpan(text: displayText, style: textStyle);
       final textPainter = TextPainter(text: textSpan, textDirection: TextDirection.ltr);
 
       textPainter.layout(minWidth: 0, maxWidth: size.width);
-      final offset = Offset(box.left, box.top - 15);
+      // Adjust the offset if you want the text to appear above, below, or next to the box
+      final offset = Offset(box.left, box.top - 20); // Move the text a bit higher than the top of the box
       textPainter.paint(canvas, offset);
     }
   }
 
   @override
-  bool shouldRepaint(BoxPainter oldDelegate) => !listEquals(oldDelegate.boxes, boxes);
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true; // You could optimize this to only repaint when boxes change
+  }
 }
+
+
+
+
+class EuclideanDistTracker {
+  final Map<int, math.Point<double>> centerPoints = {};
+  Map<int, int> lostFrames = {};
+  int idCount = 0;
+  final int maxLostFrames = 10;
+
+  void update(List<Box> boxes) {
+    final Map<int, math.Point<double>> newCenterPoints = {};
+    Map<int, int> newLostFrames = Map.from(lostFrames);
+
+    lostFrames.forEach((id, count) {
+      newLostFrames[id] = count + 1;
+    });
+
+    for (final box in boxes) {
+      final cx = box.left + box.width / 2;
+      final cy = box.top + box.height / 2;
+      final currentCenter = math.Point<double>(cx, cy);
+
+      bool sameObjectDetected = false;
+      int? closestId;
+      double minDistance = double.infinity;
+
+      centerPoints.forEach((id, point) {
+        final dist = math.sqrt(math.pow(currentCenter.x - point.x, 2) + math.pow(currentCenter.y - point.y, 2));
+        if (dist < 25 && dist < minDistance) {
+          minDistance = dist;
+          closestId = id;
+          sameObjectDetected = true;
+        }
+      });
+
+      if (sameObjectDetected && closestId != null) {
+        // Assert that closestId is not null with the '!' operator after checking it is not null
+        newCenterPoints[closestId!] = currentCenter;
+        box.id = closestId; // Assign the found ID to the box
+        newLostFrames.remove(closestId); // Reset lost frame count for this ID
+      } else {
+        // Assign a new ID to the box
+        box.id = idCount;
+        newCenterPoints[idCount] = currentCenter;
+        newLostFrames[idCount] = 0; // Initialize lost frame count for new ID
+        idCount++;
+      }
+    }
+
+    newLostFrames.forEach((id, count) {
+      if (count > maxLostFrames) {
+        centerPoints.remove(id);
+      }
+    });
+
+    centerPoints.clear();
+    centerPoints.addAll(newCenterPoints);
+    lostFrames = newLostFrames;
+  }
+}
+
