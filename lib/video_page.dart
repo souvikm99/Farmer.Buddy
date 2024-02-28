@@ -152,8 +152,12 @@ class _VideoPageState extends State<VideoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("OBJECT DETECTOR LIVE")),
-      backgroundColor: Colors.lightBlue,
+      appBar: AppBar(
+        title: const Text("Object Detector Live"),
+        backgroundColor: Colors.deepPurple, // Updated color
+        elevation: 0,
+      ),
+      backgroundColor: Colors.black, // Updated background color for consistency
       body: SafeArea(
         child: Stack(
           children: <Widget>[
@@ -162,17 +166,30 @@ class _VideoPageState extends State<VideoPage> {
               size: Size.infinite,
               painter: BoxPainter(boxes: boxes),
             ),
-            Positioned(
-              top: 20,
-              left: 20,
-              child: Text(inferenceTime, // Display the inference time
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.red,
-                    backgroundColor: Colors.black54,
-                  )),
-            ),
+            _buildInferenceTimeDisplay(), // Updated UI for inference time display
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInferenceTimeDisplay() {
+    // Creates a more visually appealing display for the inference time
+    return Positioned(
+      top: 20,
+      left: 20,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        decoration: BoxDecoration(
+          color: Colors.deepPurple, // Match the AppBar color
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: Text(
+          inferenceTime,
+          style: const TextStyle(
+            fontSize: 16,
+            color: Colors.white,
+          ),
         ),
       ),
     );
@@ -265,36 +282,38 @@ class EuclideanDistTracker {
 
       centerPoints.forEach((id, point) {
         final dist = math.sqrt(math.pow(currentCenter.x - point.x, 2) + math.pow(currentCenter.y - point.y, 2));
-        if (dist < 25 && dist < minDistance) {
+
+        if (dist < minDistance) {
           minDistance = dist;
           closestId = id;
-          sameObjectDetected = true;
         }
       });
 
-      if (sameObjectDetected && closestId != null) {
-        // Assert that closestId is not null with the '!' operator after checking it is not null
+      if (closestId != null && minDistance < 50.0) { // Assuming 50.0 as the distance threshold for matching
         newCenterPoints[closestId!] = currentCenter;
-        box.id = closestId; // Assign the found ID to the box
-        newLostFrames.remove(closestId); // Reset lost frame count for this ID
-      } else {
-        // Assign a new ID to the box
-        box.id = idCount;
-        newCenterPoints[idCount] = currentCenter;
-        newLostFrames[idCount] = 0; // Initialize lost frame count for new ID
-        idCount++;
+        newLostFrames.remove(closestId);
+        sameObjectDetected = true;
+        box.id = closestId; // Assign the tracked object's ID to the new detection
+      }
+
+      if (!sameObjectDetected) {
+        // This is a new object, assign a new ID
+        box.id = idCount++;
+        newCenterPoints[box.id!] = currentCenter;
       }
     }
 
+    // Remove objects that have been lost for too many frames
     newLostFrames.forEach((id, count) {
       if (count > maxLostFrames) {
+        newLostFrames.remove(id);
         centerPoints.remove(id);
       }
     });
 
+    // Update tracking information with new detections
     centerPoints.clear();
     centerPoints.addAll(newCenterPoints);
     lostFrames = newLostFrames;
   }
 }
-
