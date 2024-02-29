@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:object_detection/HomeScreen.dart';
 import 'package:object_detection/server_page.dart';
+import 'package:object_detection/test.dart';
 import 'package:object_detection/video_page.dart';
 import 'package:camera/camera.dart';
 import 'package:object_detection/scraps/test_overlay.dart';
@@ -75,7 +76,7 @@ class HomePage extends StatelessWidget {
               SizedBox(height: 20),
               _buildActionButton(context, 'Server', Icons.web_rounded, ServerPage()),
               SizedBox(height: 20),
-              _buildActionButton(context, 'Test', Icons.west, TakePictureScreen(camera: cameras!.first)),
+              _buildActionButton(context, 'Test', Icons.west, TestState()),
             ],
           ),
         ),

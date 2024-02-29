@@ -47,6 +47,7 @@ dependencies:
   open_file: ^3.3.2
   http: ^1.2.1
   image_picker: ^1.0.7
+  mime: ^1.0.5
 
 dev_dependencies:
   flutter_test:
@@ -77,6 +78,7 @@ flutter:
     - images/
     - assets/models/
     - assets/labels/
+    - assets/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
