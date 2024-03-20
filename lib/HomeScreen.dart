@@ -20,7 +20,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late ModelObjectDetection _objectModel;
+  ModelObjectDetection? _objectModel; // Make nullable
   String? _imagePrediction;
   List? _prediction;
   File? _image;
@@ -35,21 +35,34 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     loadModel();
-    runObjectDetection();
+    // Removed runObjectDetection from here to prevent it running before model is loaded
   }
 
-  Future loadModel() async {
+  // Future loadModel() async {
+  //   String pathObjectDetectionModel = "assets/models/best_optimized.torchscript";
+  //   try {
+  //     _objectModel = await FlutterPytorch.loadObjectDetectionModel(
+  //         pathObjectDetectionModel, 14, 640, 640,
+  //         labelPath: "assets/labels/lb2.txt");
+  //   } catch (e) {
+  //     if (e is PlatformException) {
+  //       print("only supported for android, Error is $e");
+  //     } else {
+  //       print("Error is $e");
+  //     }
+  //   }
+  // }
+
+  Future<void> loadModel() async {
     String pathObjectDetectionModel = "assets/models/best_optimized.torchscript";
     try {
       _objectModel = await FlutterPytorch.loadObjectDetectionModel(
           pathObjectDetectionModel, 14, 640, 640,
           labelPath: "assets/labels/lb2.txt");
+      print("Model loaded successfully");
     } catch (e) {
-      if (e is PlatformException) {
-        print("only supported for android, Error is $e");
-      } else {
-        print("Error is $e");
-      }
+      print("Error loading model: $e");
+      // Consider showing an error message to the user
     }
   }
 
@@ -80,17 +93,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //running detections on image
-  Future runObjectDetection() async {
+  Future<void> runObjectDetection() async {
+    if (_objectModel == null) {
+      print("Model not loaded. Please load the model before running object detection.");
+      return;
+    }
+
     setState(() {
       firststate = false;
       message = false;
     });
     //pick an image
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
-    objDetect = await _objectModel.getImagePrediction(
+    objDetect = (await _objectModel?.getImagePrediction(
         await File(image!.path).readAsBytes(),
         minimumScore: 0.1,
-        IOUThershold: 0.3);
+        IOUThershold: 0.3))!;
     objDetect.forEach((element) {
       print({
         "score": element?.score,
@@ -109,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
     countUniqueObjects(); // Count unique objects after detection
     scheduleTimeout(5 * 1000);
     setState(() {
-      _image = File(image.path);
+      _image = File(image!.path);
     });
   }
 
@@ -159,9 +177,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
 
-
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -174,19 +189,30 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Image with Detections....
-            !firststate
-                ? !message
-                ? LoaderState()
-                : Text("Select the Camera to Begin Detections")
-                : Expanded(
+            // Conditional rendering based on whether an image is available
+            _image != null
+                ? Expanded(
               child: Container(
-                child:
-                _objectModel.renderBoxesOnImage(_image!, objDetect),
+                // Display the image with detections if available
+                child: _objectModel != null ? _objectModel!.renderBoxesOnImage(_image!, objDetect) : Text("Model not loaded"),
+              ),
+            ):
+                // : Text("Select the Camera to Begin Detections"),
+            SizedBox(height: 20),
+            // Button to initiate runObjectDetection
+            ElevatedButton(
+              onPressed: () async {
+                await requestPermissions(); // Ensure permissions are granted
+                runObjectDetection(); // Trigger camera feed and object detection
+              },
+              child: Text('Start Detection'),
+              style: ElevatedButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: Colors.deepPurple, // Button color
               ),
             ),
             SizedBox(height: 20),
-            // Display unique object counts
+            // Additional UI elements as required...
             Container(
               height: 200, // Fixed height for the container
               child: ListView(
@@ -219,21 +245,86 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text("$_imagePrediction"),
               ),
             ),
-            // Button to click pic
-            // ElevatedButton(
-            //   onPressed: () {
-            //     runObjectDetection();
-            //   },
-            //   child: const Icon(Icons.camera_alt_outlined),
-            //   style: ElevatedButton.styleFrom(
-            //     foregroundColor: Colors.white, backgroundColor: Colors.deepPurple, // text color
-            //     shape: CircleBorder(), // circular button
-            //     padding: EdgeInsets.all(16), // padding
-            //   ),
-            // )
           ],
         ),
       ),
     );
   }
+
+
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(
+//         title: Text("OBJECT DETECTOR APP"),
+//         backgroundColor: Colors.deepPurple, // Change app bar color to purple
+//       ),
+//       backgroundColor: Colors.deepPurple, // Change background color to purple
+//       body: Center(
+//         child: Column(
+//           mainAxisAlignment: MainAxisAlignment.center,
+//           children: [
+//             // Image with Detections....
+//             !firststate
+//                 ? !message
+//                 ? LoaderState()
+//                 : Text("Select the Camera to Begin Detections")
+//                 : Expanded(
+//               child: Container(
+//                 child:
+//                 _objectModel?.renderBoxesOnImage(_image!, objDetect),
+//               ),
+//             ),
+//             SizedBox(height: 20),
+//             // Display unique object counts
+//             Container(
+//               height: 200, // Fixed height for the container
+//               child: ListView(
+//                 children: uniqueObjectCounts.entries.map((entry) => ListTile(
+//                   title: Text(
+//                     entry.key,
+//                     style: TextStyle(fontSize: 16, color: Colors.white),
+//                   ),
+//                   trailing: Text(
+//                     entry.value.toString(),
+//                     style: TextStyle(fontSize: 16, color: Colors.white),
+//                   ),
+//                 )).toList(),
+//               ),
+//             ),
+//             SizedBox(height: 20),
+//             // Show the export button only when bounding boxes are shown
+//             if (firststate)
+//               ElevatedButton(
+//                 onPressed: exportToCSV,
+//                 child: Text('Export to CSV'),
+//                 style: ElevatedButton.styleFrom(
+//                   foregroundColor: Colors.white, backgroundColor: Colors.deepPurple, // Text color
+//                 ),
+//               ),
+//             SizedBox(height: 20),
+//             Center(
+//               child: Visibility(
+//                 visible: _imagePrediction != null,
+//                 child: Text("$_imagePrediction"),
+//               ),
+//             ),
+//             // Button to click pic
+//             // ElevatedButton(
+//             //   onPressed: () {
+//             //     runObjectDetection();
+//             //   },
+//             //   child: const Icon(Icons.camera_alt_outlined),
+//             //   style: ElevatedButton.styleFrom(
+//             //     foregroundColor: Colors.white, backgroundColor: Colors.deepPurple, // text color
+//             //     shape: CircleBorder(), // circular button
+//             //     padding: EdgeInsets.all(16), // padding
+//             //   ),
+//             // )
+//           ],
+//         ),
+//       ),
+//     );
+//   }
 }

@@ -76,7 +76,7 @@ class HomePage extends StatelessWidget {
               SizedBox(height: 20),
               _buildActionButton(context, 'Server', Icons.web_rounded, ServerPage()),
               SizedBox(height: 20),
-              _buildActionButton(context, 'Test', Icons.west, TestState()),
+              _buildActionButton(context, 'Test', Icons.west, VideoExample()),
             ],
           ),
         ),

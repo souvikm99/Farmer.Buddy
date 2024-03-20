@@ -1,8 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 import 'dart:typed_data';
+import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 
 class ServerPage extends StatefulWidget {
   @override
@@ -11,15 +15,23 @@ class ServerPage extends StatefulWidget {
 
 class _ServerPageState extends State<ServerPage> {
   final ImagePicker _picker = ImagePicker();
-  VideoPlayerController? _controller;
-  String? _mediaType; // Variable to store the media type
-  Uint8List? imageData; // Variable to store image data
-  bool _isLoading = false; // Loading state
-  bool _isPlaying = false; // Playing state
+  Uint8List? imageData;
+  bool _isLoading = false;
+  VlcPlayerController? _vlcPlayerController;
+  String? _mediaType;
+  bool _isPlaying = false;
+  double _sliderValue = 0.0;
+  Duration _videoDuration = Duration.zero;
+  Duration _currentPosition = Duration.zero;
+  Timer? _timer;
+
+
 
   @override
   void dispose() {
-    _controller?.dispose(); // Dispose the video controller
+    // _controller?.dispose(); // Dispose the video controller
+    _vlcPlayerController?.dispose(); // Dispose the VLC video controller
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -31,7 +43,7 @@ class _ServerPageState extends State<ServerPage> {
       _isLoading = true; // Set loading state
     });
 
-    var request = http.MultipartRequest('POST', Uri.parse('https://532e-14-139-174-50.ngrok-free.app/upload'));
+    var request = http.MultipartRequest('POST', Uri.parse('https://jackal-absolute-firefly.ngrok-free.app/upload'));
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
     var res = await request.send();
@@ -49,19 +61,40 @@ class _ServerPageState extends State<ServerPage> {
 
   // Function to fetch media from server
   Future<void> _fetchMedia() async {
-    var url = 'https://532e-14-139-174-50.ngrok-free.app/get-media';
+    var url = 'https://jackal-absolute-firefly.ngrok-free.app/get-media';
     try {
       var response = await http.get(Uri.parse(url), headers: {'Accept': 'application/json'});
       _mediaType = response.headers['content-type'];
       if (response.statusCode == 200) {
         if (_mediaType != null) {
           if (_mediaType!.startsWith('video/')) {
-            // If media is video, initialize video controller
-            _controller = VideoPlayerController.network(url)
-              ..initialize().then((_) {
-                setState(() {});
-                _controller!.play(); // Play video after initialization
-              });
+            // Initialize VLC video controller if media is video
+            _vlcPlayerController = VlcPlayerController.network(
+              url,
+              autoPlay: true,
+              hwAcc: HwAcc.full,
+              options: VlcPlayerOptions(),
+            )..addListener(() {
+              final state = _vlcPlayerController!.value;
+
+              // Update UI based on playback state
+              _updateState();
+
+              // Check for the video ended event
+              if (state.playingState == PlayingState.ended) {
+                // Video playback is complete
+                setState(() {
+                  _isPlaying = true;
+                  // Reset the video position to the start for a replay option
+                  // _vlcPlayerController!.setTime(0);
+                  // // Optionally, automatically start playing again for a replay
+                  _vlcPlayerController!.play();
+                });
+              }
+            });
+
+
+
           } else if (_mediaType!.startsWith('image/')) {
             // If media is image, set image data
             setState(() {
@@ -77,18 +110,42 @@ class _ServerPageState extends State<ServerPage> {
     }
   }
 
-  // Function to pick media from gallery
-  Future<void> _pickMedia({required bool isVideo}) async {
-    XFile? file;
-    if (isVideo) {
-      file = await _picker.pickVideo(source: ImageSource.gallery);
+
+
+
+  Future<String> _fetchCounts() async {
+    final response = await http.get(
+      Uri.parse('https://jackal-absolute-firefly.ngrok-free.app/get-counts'),
+    );
+
+    if (response.statusCode == 200) {
+      final responseData = json.decode(response.body);
+      if (responseData['success']) {
+        return responseData['countsData'];
+      } else {
+        return 'Failed to load counts data: ${responseData['error']}';
+      }
     } else {
-      file = await _picker.pickImage(source: ImageSource.gallery);
+      return 'Failed to load counts data.';
     }
-    _uploadFile(file); // Upload picked media
   }
 
-  // Function to show dialog for choosing media option
+
+  // Function to pick media from gallery
+  Future<void> _pickMedia({required bool isVideo, required bool isCapture}) async {
+    XFile? file;
+    if (isCapture) {
+      file = isVideo
+          ? await _picker.pickVideo(source: ImageSource.camera)
+          : await _picker.pickImage(source: ImageSource.camera);
+    } else {
+      file = isVideo
+          ? await _picker.pickVideo(source: ImageSource.gallery)
+          : await _picker.pickImage(source: ImageSource.gallery);
+    }
+    _uploadFile(file);
+  }
+
   Future<void> _showPickOptionsDialog(BuildContext context) {
     return showDialog(
       context: context,
@@ -99,18 +156,34 @@ class _ServerPageState extends State<ServerPage> {
             child: ListBody(
               children: <Widget>[
                 GestureDetector(
-                  child: Text("Image"),
+                  child: Text("Upload Image"),
                   onTap: () {
                     Navigator.of(context).pop();
-                    _pickMedia(isVideo: false); // Pick image
+                    _pickMedia(isVideo: false, isCapture: false);
                   },
                 ),
                 Padding(padding: EdgeInsets.all(8.0)),
                 GestureDetector(
-                  child: Text("Video"),
+                  child: Text("Upload Video"),
                   onTap: () {
                     Navigator.of(context).pop();
-                    _pickMedia(isVideo: true); // Pick video
+                    _pickMedia(isVideo: true, isCapture: false);
+                  },
+                ),
+                Padding(padding: EdgeInsets.all(8.0)),
+                GestureDetector(
+                  child: Text("Capture Image"),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickMedia(isVideo: false, isCapture: true);
+                  },
+                ),
+                Padding(padding: EdgeInsets.all(8.0)),
+                GestureDetector(
+                  child: Text("Capture Video"),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _pickMedia(isVideo: true, isCapture: true);
                   },
                 ),
               ],
@@ -121,16 +194,47 @@ class _ServerPageState extends State<ServerPage> {
     );
   }
 
-  // Function to play or pause video
-  void _toggleVideoPlayback() {
+  void _showCountsData(BuildContext context) async {
+    String countsData = await _fetchCounts();
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Counts Data"),
+          content: SingleChildScrollView(
+            child: Text(countsData),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Close'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+
+  void _updateState() async {
+    if (_vlcPlayerController == null) return;
+    var position = await _vlcPlayerController!.getPosition();
     setState(() {
-      if (_controller!.value.isPlaying) {
-        _controller!.pause();
-        _isPlaying = false;
-      } else {
-        _controller!.play();
-        _isPlaying = true;
-      }
+      _currentPosition = position;
+      _videoDuration = _vlcPlayerController!.value.duration;
+      _sliderValue = _currentPosition.inMilliseconds.toDouble();
+      _isPlaying = _vlcPlayerController!.value.isPlaying;
+    });
+  }
+
+  void _onSliderChange(double value) {
+    final position = Duration(milliseconds: value.toInt());
+    _vlcPlayerController?.setTime(position.inMilliseconds);
+    setState(() {
+      _sliderValue = value;
     });
   }
 
@@ -142,31 +246,42 @@ class _ServerPageState extends State<ServerPage> {
       ),
       body: Center(
         child: _isLoading
-            ? CircularProgressIndicator() // Show loading indicator
+            ? CircularProgressIndicator()
             : Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (_mediaType != null && _mediaType!.startsWith('image/')) ...[
-              // If media is image, show image
+            if (_mediaType != null && _mediaType!.startsWith('image/'))
               imageData != null ? Image.memory(imageData!) : Container(),
-            ] else if (_mediaType != null && _mediaType!.startsWith('video/')) ...[
-              // If media is video, show video player
-              _controller != null && _controller!.value.isInitialized
-                  ? AspectRatio(
-                aspectRatio: _controller!.value.aspectRatio,
-                child: Stack(
-                  alignment: Alignment.bottomCenter,
-                  children: [
-                    VideoPlayer(_controller!),
-                    _buildPlaybackControls(),
-                  ],
-                ),
+            if (_mediaType != null && _mediaType!.startsWith('video/'))
+              _vlcPlayerController != null
+                  ? Column(
+                children: [
+                  VlcPlayer(
+                    controller: _vlcPlayerController!,
+                    aspectRatio: 16 / 9,
+                    placeholder: Center(child: CircularProgressIndicator()),
+                  ),
+                  // Slider(
+                  //   min: 0,
+                  //   max: _videoDuration.inMilliseconds.toDouble(),
+                  //   value: _sliderValue.clamp(0, _videoDuration.inMilliseconds.toDouble()),
+                  //   onChanged: _onSliderChange,
+                  // ),
+                  IconButton(
+                    icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+                    onPressed: _togglePlayPause,
+                  ),
+                ],
               )
                   : Container(),
-            ],
             ElevatedButton(
-              onPressed: () => _showPickOptionsDialog(context), // Show pick options dialog
+              onPressed: () => _showPickOptionsDialog(context),
               child: Text('Pick and Upload Image/Video'),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => _showCountsData(context),
+              child: Text('Show Counts Data'),
             ),
           ],
         ),
@@ -174,34 +289,40 @@ class _ServerPageState extends State<ServerPage> {
     );
   }
 
-  // Function to build playback controls
-  Widget _buildPlaybackControls() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            onPressed: _toggleVideoPlayback,
-            icon: Icon(
-              _isPlaying ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
-            ),
-          ),
-          Flexible(
-            child: VideoProgressIndicator(
-              _controller!,
-              allowScrubbing: true,
-              colors: VideoProgressColors(
-                playedColor: Colors.white,
-                backgroundColor: Colors.grey,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  void _togglePlayPause() async {
+    if (_vlcPlayerController != null) {
+      final isPlaying = _vlcPlayerController!.value.isPlaying;
+
+      if (isPlaying) {
+        // If the video is currently playing, pause it.
+        await _vlcPlayerController!.pause();
+        setState(() => _isPlaying = false);
+      } else {
+        // Check if the video has ended.
+        final currentPosition = await _vlcPlayerController!.getPosition();
+        final isVideoEnded = currentPosition >= _videoDuration || currentPosition == Duration.zero;
+
+        if (isVideoEnded || !_isPlaying) {
+          // If the video ended, seek to the beginning and play again.
+          await _vlcPlayerController!.setTime(0); // Seek to the beginning of the video
+          await _vlcPlayerController!.play(); // Start playing the video
+          setState(() {
+            _isPlaying = true;
+            _sliderValue = 0.0; // Reset the slider to the start
+          });
+        } else {
+          // If the video is paused, just play it.
+          await _vlcPlayerController!.play();
+          setState(() => _isPlaying = true);
+        }
+      }
+    }
   }
+
+
+
+
+
 }
 
 void main() => runApp(MaterialApp(home: ServerPage()));

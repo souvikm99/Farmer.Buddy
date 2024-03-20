@@ -1,0 +1,4 @@
+-keep class org.videolan.libvlc.** { *; }
+-keep class org.pytorch.** { *; }
+-keep interface org.pytorch.** { *; }
+-keep class com.facebook.jni.** { *; }

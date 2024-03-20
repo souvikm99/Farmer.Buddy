@@ -18,6 +18,7 @@ class VideoPage extends StatefulWidget {
 
 class _VideoPageState extends State<VideoPage> {
   late CameraController cameraController;
+  bool _isCameraInitialized = false;
   CameraImage? imgCamera;
   bool isWorking = false;
   late ModelObjectDetection _objectModel;
@@ -49,6 +50,26 @@ class _VideoPageState extends State<VideoPage> {
     }
   }
 
+  // void initCamera() {
+  //   cameraController = CameraController(cameras![0], ResolutionPreset.high);
+  //   cameraController.initialize().then((_) {
+  //     if (!mounted) {
+  //       return;
+  //     }
+  //     setState(() {
+  //       cameraController.startImageStream((imageFromStream) {
+  //         if (!isWorking && frameSkipCount++ % 5 == 0) {
+  //           isWorking = true;
+  //           imgCamera = imageFromStream;
+  //           runObjectDetection();
+  //         }
+  //       });
+  //     });
+  //   }).catchError((error) {
+  //     print("Error initializing camera: $error");
+  //   });
+  // }
+
   void initCamera() {
     cameraController = CameraController(cameras![0], ResolutionPreset.high);
     cameraController.initialize().then((_) {
@@ -56,6 +77,7 @@ class _VideoPageState extends State<VideoPage> {
         return;
       }
       setState(() {
+        _isCameraInitialized = true;
         cameraController.startImageStream((imageFromStream) {
           if (!isWorking && frameSkipCount++ % 5 == 0) {
             isWorking = true;
@@ -70,7 +92,7 @@ class _VideoPageState extends State<VideoPage> {
   }
 
   Future<void> runObjectDetection() async {
-    if (imgCamera == null || !mounted) return;
+    if (!_isCameraInitialized || imgCamera == null || !mounted) return; // Check if the camera is initialized here
     final stopwatch = Stopwatch()..start(); // Start the stopwatch
 
     final previewSize = cameraPreviewKey.currentContext?.findRenderObject()?.semanticBounds.size;
@@ -143,8 +165,10 @@ class _VideoPageState extends State<VideoPage> {
 
   @override
   void dispose() {
-    cameraController.stopImageStream();
-    cameraController.dispose();
+    if (_isCameraInitialized) { // Only attempt to stop and dispose if initialized
+      cameraController.stopImageStream();
+      cameraController.dispose();
+    }
     _debounce?.cancel();
     super.dispose();
   }
@@ -159,7 +183,8 @@ class _VideoPageState extends State<VideoPage> {
       ),
       backgroundColor: Colors.black, // Updated background color for consistency
       body: SafeArea(
-        child: Stack(
+        child: _isCameraInitialized ?
+        Stack(
           children: <Widget>[
             CameraPreview(cameraController, key: cameraPreviewKey),
             CustomPaint(
@@ -168,7 +193,8 @@ class _VideoPageState extends State<VideoPage> {
             ),
             _buildInferenceTimeDisplay(), // Updated UI for inference time display
           ],
-        ),
+        )
+            : Center(child: CircularProgressIndicator()), // Show loading spinner until the camera is ready
       ),
     );
   }
