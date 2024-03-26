@@ -24,6 +24,8 @@ class _ServerPageState extends State<ServerPage> {
   Duration _videoDuration = Duration.zero;
   Duration _currentPosition = Duration.zero;
   Timer? _timer;
+  String _data = "Press the button to fetch data";
+  String api_name = "http://192.168.1.23:5050";
 
 
 
@@ -43,7 +45,7 @@ class _ServerPageState extends State<ServerPage> {
       _isLoading = true; // Set loading state
     });
 
-    var request = http.MultipartRequest('POST', Uri.parse('https://jackal-absolute-firefly.ngrok-free.app/upload'));
+    var request = http.MultipartRequest('POST', Uri.parse(api_name+'/upload'));
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
     var res = await request.send();
@@ -61,7 +63,7 @@ class _ServerPageState extends State<ServerPage> {
 
   // Function to fetch media from server
   Future<void> _fetchMedia() async {
-    var url = 'https://jackal-absolute-firefly.ngrok-free.app/get-media';
+    var url = api_name+'/get-media';
     try {
       var response = await http.get(Uri.parse(url), headers: {'Accept': 'application/json'});
       _mediaType = response.headers['content-type'];
@@ -115,7 +117,7 @@ class _ServerPageState extends State<ServerPage> {
 
   Future<String> _fetchCounts() async {
     final response = await http.get(
-      Uri.parse('https://jackal-absolute-firefly.ngrok-free.app/get-counts'),
+      Uri.parse(api_name+'/get-counts'),
     );
 
     if (response.statusCode == 200) {
@@ -127,6 +129,27 @@ class _ServerPageState extends State<ServerPage> {
       }
     } else {
       return 'Failed to load counts data.';
+    }
+  }
+
+  fetchData() async {
+    try {
+      final response = await http.get(Uri.parse(api_name+'/get-counts'));
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        final String data = jsonData['data'] ?? "No data available"; // Provide a fallback value
+        setState(() {
+          _data = data; // _data should be initialized to a non-null String
+        });
+      } else {
+        setState(() {
+          _data = "Error fetching data.";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _data = "Exception: $e"; // Ensure _data is never set to null
+      });
     }
   }
 
@@ -195,14 +218,14 @@ class _ServerPageState extends State<ServerPage> {
   }
 
   void _showCountsData(BuildContext context) async {
-    String countsData = await _fetchCounts();
+    await fetchData(); // This will update _data with the fetched data
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text("Counts Data"),
           content: SingleChildScrollView(
-            child: Text(countsData),
+            child: Text(_data), // Display the data fetched by fetchData
           ),
           actions: <Widget>[
             TextButton(

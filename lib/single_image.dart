@@ -14,12 +14,12 @@ import 'package:share_plus/share_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 
-class TestApp extends StatefulWidget {
+class SingleImageCap extends StatefulWidget {
   @override
-  _TestAppState createState() => _TestAppState();
+  _SingleImageCapState createState() => _SingleImageCapState();
 }
 
-class _TestAppState extends State<TestApp> {
+class _SingleImageCapState extends State<SingleImageCap> {
 
   ModelObjectDetection? _objectModel; // Make nullable
   String? _imagePrediction;
@@ -31,8 +31,6 @@ class _TestAppState extends State<TestApp> {
   bool firststate = false;
   bool message = true;
   Map<String, int> uniqueObjectCounts = {};
-  // Define a dictionary to store detection results and counts
-  Map<String, int> detectionResults = {};
 
   @override
   void initState() {
@@ -99,18 +97,6 @@ class _TestAppState extends State<TestApp> {
         await File(image!.path).readAsBytes(),
         minimumScore: 0.1,
         IOUThershold: 0.3))!;
-
-    // Update dictionary with detection results
-    objDetect.forEach((element) {
-      if (element != null && element.className != null) {
-        String className = element.className!;
-        detectionResults[className] = (detectionResults[className] ?? 0) + 1;
-      }
-    });
-
-    // Print the dictionary
-    print('Detection Results: $detectionResults');
-
     objDetect.forEach((element) {
       print({
         "score": element?.score,
@@ -234,42 +220,73 @@ class _TestAppState extends State<TestApp> {
                         ),
                       ),
                       child: ClipRRect(
+                        // borderRadius: BorderRadius.circular(40),
                         borderRadius: BorderRadius.only(
                           topLeft: Radius.circular(40.0),
                           topRight: Radius.circular(40.0),
                         ),
                         child: Column(
                           children: [
+                            // This part checks if the model is loaded and an image has been picked
                             _objectModel != null && _image != null
                                 ? Container(
-                              child: _objectModel!.renderBoxesOnImage(_image!, objDetect),
+                              child: _objectModel!.renderBoxesOnImage(_image!, objDetect), // This displays the image with rendered boxes
                               width: double.infinity,
                               height: 230,
                             )
-                                : Image.asset(
+                                :Image.asset(
                               'assets/loading_icon_green_banner.png',
                               fit: BoxFit.cover,
                               width: double.infinity,
                               height: 230,
                             ),
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(0, 5.0, 0, 5.0),
+                              padding: const EdgeInsets.fromLTRB(0, 5.0, 0, 5.0), // Reduced top padding
                               child: Container(
-                                height: 160,
+                                height: 160, // Set a fixed height for the scrollable container
                                 child: SingleChildScrollView(
                                   child: Column(
-                                    children: detectionResults.entries.map((entry) =>
-                                        CropCounter(crop: entry.key, count: entry.value)).toList(),
+                                    children: uniqueObjectCounts.entries
+                                        .map((entry) => CropCounter(crop: entry.key, count: entry.value))
+                                        .toList(),
                                   ),
                                 ),
                               ),
                             ),
                             Container(
-                              height: 130,
+                              height: 130, // Fixed height for the bar chart container
                               child: BarChartWidget(
-                                data: detectionResults,
+                                data: uniqueObjectCounts, // You would pass the necessary data to the BarChartWidget
                               ),
                             ),
+                            // Padding(
+                            //   padding: const EdgeInsets.all(16.0),
+                            //   child: Row(
+                            //     mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            //     children: <Widget>[
+                            //     ElevatedButton(
+                            //                 onPressed: runObjectDetection, // Hook up the Run Again functionality
+                            //                 child: Text('Run Again', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                            //                 style: ElevatedButton.styleFrom(
+                            //                   backgroundColor: Color(0xFFA3D79C),
+                            //                   shape: RoundedRectangleBorder(
+                            //                     borderRadius: BorderRadius.circular(15),
+                            //                   ),
+                            //                 ),
+                            //               ),
+                            //               ElevatedButton(
+                            //                 onPressed: checkAndExportToCSV, // Hook up the Export CSV functionality
+                            //                 child: Text('Export CSV', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                            //                 style: ElevatedButton.styleFrom(
+                            //                   backgroundColor: Color(0xFFEDAC4A),
+                            //                   shape: RoundedRectangleBorder(
+                            //                     borderRadius: BorderRadius.circular(15),
+                            //                   ),
+                            //                 ),
+                            //               ),
+                            //     ],
+                            //   ),
+                            // ),
                           ],
                         ),
                       ),
@@ -285,25 +302,34 @@ class _TestAppState extends State<TestApp> {
               child: Padding(
                 padding: const EdgeInsets.all(0.0),
                 child: Container(
+                  // padding: EdgeInsets.symmetric(vertical: 8), // Optional: for some internal padding around the buttons
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(0),
+                    color: Colors.white, // Set the background color to white
+                    borderRadius: BorderRadius.circular(0), // Optional: if you want the container to be rounded
+                    // boxShadow: [ // Optional: if you want to add a shadow for better contrast
+                    //   BoxShadow(
+                    //     color: Colors.grey.withOpacity(0.5),
+                    //     spreadRadius: 1,
+                    //     blurRadius: 5,
+                    //     offset: Offset(0, -1), // Changes position of shadow
+                    //   ),
+                    // ],
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: <Widget>[
                       ElevatedButton(
-                        onPressed: runObjectDetection,
-                        child: Text('Add Images', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                        onPressed: runObjectDetection, // Hook up the Run Again functionality
+                        child: Text('Run Again', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFFF7DC11),
+                          backgroundColor: Color(0xFFA3D79C),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(15),
                           ),
                         ),
                       ),
                       ElevatedButton(
-                        onPressed: checkAndExportToCSV,
+                        onPressed: checkAndExportToCSV, // Hook up the Export CSV functionality
                         child: Text('Export CSV', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Color(0xFFEDAC4A),
@@ -317,12 +343,12 @@ class _TestAppState extends State<TestApp> {
                 ),
               ),
             ),
+
           ],
         ),
       ),
     );
   }
-
 }
 
 
@@ -398,7 +424,7 @@ class BarChartWidget extends StatelessWidget {
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
               ),
-              width: 5, // Adjusted bar width for a sleeker look
+              width: 14, // Adjusted bar width for a sleeker look
             ),
           ],
         ),
@@ -429,7 +455,7 @@ class BarChartWidget extends StatelessWidget {
                   final String text = data.keys.elementAt(value.toInt());
                   return Padding(
                     padding: const EdgeInsets.only(top: 3.0),
-                    child: Text(text, style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 4)), // Smaller font size
+                    child: Text(text, style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 5)), // Smaller font size
                   );
                 },
                 interval: 1,

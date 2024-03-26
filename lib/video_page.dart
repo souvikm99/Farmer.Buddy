@@ -28,6 +28,8 @@ class _VideoPageState extends State<VideoPage> {
   Timer? _debounce;
   String inferenceTime = "Inference time: 0ms"; // Variable to store inference time
   EuclideanDistTracker tracker = EuclideanDistTracker();
+  // New mapping for class-wise tracking of unique IDs
+  Map<String, Set<int>> classWiseTracking = {};
 
   @override
   void initState() {
@@ -152,6 +154,8 @@ class _VideoPageState extends State<VideoPage> {
   }
 
 
+
+
   void updateBoxes(List<Box> newBoxes) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 100), () {
@@ -184,6 +188,17 @@ class _VideoPageState extends State<VideoPage> {
       backgroundColor: Colors.black, // Updated background color for consistency
       body: SafeArea(
         child: _isCameraInitialized ?
+        // Stack(
+        //   children: <Widget>[
+        //     CameraPreview(cameraController, key: cameraPreviewKey),
+        //     CustomPaint(
+        //       size: Size.infinite,
+        //       painter: BoxPainter(boxes: boxes),
+        //     ),
+        //     _buildInferenceTimeDisplay(), // Updated UI for inference time display
+        //   ],
+        // )
+        //
         Stack(
           children: <Widget>[
             CameraPreview(cameraController, key: cameraPreviewKey),
@@ -191,13 +206,57 @@ class _VideoPageState extends State<VideoPage> {
               size: Size.infinite,
               painter: BoxPainter(boxes: boxes),
             ),
-            _buildInferenceTimeDisplay(), // Updated UI for inference time display
+            _buildInferenceTimeDisplay(),
+            _buildClassCountsDisplay(), // Display class counts here
           ],
         )
             : Center(child: CircularProgressIndicator()), // Show loading spinner until the camera is ready
       ),
     );
   }
+
+  Widget _buildClassCountsDisplay() {
+    // Building a display string for current and cumulative counts
+    String buildCountsDisplay(Map<String, int> counts) {
+      return counts.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+    }
+
+    return Positioned(
+      top: 80,
+      right: 20,
+      child: Container(
+        padding: EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.deepPurple,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: "Current Frame:\n",
+                style: TextStyle(fontSize: 16, color: Colors.white), // Corrected styling here
+              ),
+              TextSpan(
+                text: buildCountsDisplay(tracker.classCounts) + "\n\n",
+                style: TextStyle(fontSize: 14, color: Colors.white), // Corrected styling here
+              ),
+              TextSpan(
+                text: "Cumulative:\n",
+                style: TextStyle(fontSize: 16, color: Colors.white), // Corrected styling here
+              ),
+              TextSpan(
+                text: buildCountsDisplay(tracker.cumulativeClassCounts),
+                style: TextStyle(fontSize: 14, color: Colors.white), // Corrected styling here
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
 
   Widget _buildInferenceTimeDisplay() {
     // Creates a more visually appealing display for the inference time
@@ -283,19 +342,81 @@ class BoxPainter extends CustomPainter {
 
 
 
+// class EuclideanDistTracker {
+//   final Map<int, math.Point<double>> centerPoints = {};
+//   Map<int, int> lostFrames = {};
+//   int idCount = 0;
+//   final int maxLostFrames = 10;
+//
+//   void update(List<Box> boxes) {
+//     final Map<int, math.Point<double>> newCenterPoints = {};
+//     Map<int, int> newLostFrames = Map.from(lostFrames);
+//
+//     lostFrames.forEach((id, count) {
+//       newLostFrames[id] = count + 1;
+//     });
+//
+//     for (final box in boxes) {
+//       final cx = box.left + box.width / 2;
+//       final cy = box.top + box.height / 2;
+//       final currentCenter = math.Point<double>(cx, cy);
+//
+//       bool sameObjectDetected = false;
+//       int? closestId;
+//       double minDistance = double.infinity;
+//
+//       centerPoints.forEach((id, point) {
+//         final dist = math.sqrt(math.pow(currentCenter.x - point.x, 2) + math.pow(currentCenter.y - point.y, 2));
+//
+//         if (dist < minDistance) {
+//           minDistance = dist;
+//           closestId = id;
+//         }
+//       });
+//
+//       if (closestId != null && minDistance < 50.0) { // Assuming 50.0 as the distance threshold for matching
+//         newCenterPoints[closestId!] = currentCenter;
+//         newLostFrames.remove(closestId);
+//         sameObjectDetected = true;
+//         box.id = closestId; // Assign the tracked object's ID to the new detection
+//       }
+//
+//       if (!sameObjectDetected) {
+//         // This is a new object, assign a new ID
+//         box.id = idCount++;
+//         newCenterPoints[box.id!] = currentCenter;
+//       }
+//     }
+//
+//     // Remove objects that have been lost for too many frames
+//     newLostFrames.forEach((id, count) {
+//       if (count > maxLostFrames) {
+//         newLostFrames.remove(id);
+//         centerPoints.remove(id);
+//       }
+//     });
+//
+//     // Update tracking information with new detections
+//     centerPoints.clear();
+//     centerPoints.addAll(newCenterPoints);
+//     lostFrames = newLostFrames;
+//   }
+// }
+
 class EuclideanDistTracker {
   final Map<int, math.Point<double>> centerPoints = {};
   Map<int, int> lostFrames = {};
   int idCount = 0;
   final int maxLostFrames = 10;
+  Map<String, int> classCounts = {}; // For current frame counts
+  Map<String, Set<int>> cumulativeClassIds = {}; // Tracks unique IDs for each class cumulatively
 
   void update(List<Box> boxes) {
     final Map<int, math.Point<double>> newCenterPoints = {};
     Map<int, int> newLostFrames = Map.from(lostFrames);
 
-    lostFrames.forEach((id, count) {
-      newLostFrames[id] = count + 1;
-    });
+    // Reset current frame class counts
+    classCounts.clear();
 
     for (final box in boxes) {
       final cx = box.left + box.width / 2;
@@ -307,15 +428,14 @@ class EuclideanDistTracker {
       double minDistance = double.infinity;
 
       centerPoints.forEach((id, point) {
-        final dist = math.sqrt(math.pow(currentCenter.x - point.x, 2) + math.pow(currentCenter.y - point.y, 2));
-
+        final dist = math.sqrt((currentCenter.x - point.x) * (currentCenter.x - point.x) + (currentCenter.y - point.y) * (currentCenter.y - point.y));
         if (dist < minDistance) {
           minDistance = dist;
           closestId = id;
         }
       });
 
-      if (closestId != null && minDistance < 50.0) { // Assuming 50.0 as the distance threshold for matching
+      if (closestId != null && minDistance < 50.0) { // Threshold for matching
         newCenterPoints[closestId!] = currentCenter;
         newLostFrames.remove(closestId);
         sameObjectDetected = true;
@@ -323,13 +443,26 @@ class EuclideanDistTracker {
       }
 
       if (!sameObjectDetected) {
-        // This is a new object, assign a new ID
-        box.id = idCount++;
-        newCenterPoints[box.id!] = currentCenter;
+        box.id = idCount;
+        newCenterPoints[idCount] = currentCenter;
+        idCount++;
+      }
+
+      // Update class count for the current frame
+      if (box.id != null) {
+        classCounts[box.className] = (classCounts[box.className] ?? 0) + 1;
+        // Update cumulative class-wise unique ID tracking
+        cumulativeClassIds.putIfAbsent(box.className, () => <int>{});
+        cumulativeClassIds[box.className]!.add(box.id!);
       }
     }
 
-    // Remove objects that have been lost for too many frames
+    // Increment lost frame count for all tracked objects
+    lostFrames.forEach((id, count) {
+      newLostFrames[id] = count + 1;
+    });
+
+    // Remove objects that have been lost for too long
     newLostFrames.forEach((id, count) {
       if (count > maxLostFrames) {
         newLostFrames.remove(id);
@@ -337,9 +470,19 @@ class EuclideanDistTracker {
       }
     });
 
-    // Update tracking information with new detections
     centerPoints.clear();
     centerPoints.addAll(newCenterPoints);
     lostFrames = newLostFrames;
   }
+
+  // Getter to calculate and return cumulative class counts from unique IDs
+  Map<String, int> get cumulativeClassCounts {
+    Map<String, int> counts = {};
+    cumulativeClassIds.forEach((className, ids) {
+      counts[className] = ids.length; // The count is the number of unique IDs seen for this class
+    });
+    return counts;
+  }
 }
+
+
