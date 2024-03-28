@@ -12,6 +12,8 @@ import 'ImageHomeScreen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import 'mult_image.dart';
+
 class ImageHomeApp extends StatefulWidget {
   @override
   _ImageHomeAppState createState() => _ImageHomeAppState();
@@ -66,7 +68,7 @@ class FarmingDashboard extends StatelessWidget {
 
     List<Widget> destinations = [
       SingleImageCap(),
-      TestApp(),
+      MultImage(),
     ];
 
     return Scaffold(

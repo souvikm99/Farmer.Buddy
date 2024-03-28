@@ -18,12 +18,12 @@ import 'package:share_plus/share_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 
-class TestApp extends StatefulWidget {
+class MultImage extends StatefulWidget {
   @override
-  _TestAppState createState() => _TestAppState();
+  _MultImageState createState() => _MultImageState();
 }
 
-class _TestAppState extends State<TestApp> {
+class _MultImageState extends State<MultImage> {
 
   ModelObjectDetection? _objectModel; // Make nullable
   String? _imagePrediction;
