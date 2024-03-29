@@ -251,6 +251,12 @@ class _MultImageState extends State<MultImage> {
     }
   }
 
+  Future<Size> _getImageSize(File imageFile) async {
+    var decodedImage = await decodeImageFromList(imageFile.readAsBytesSync());
+    return Size(decodedImage.width.toDouble(), decodedImage.height.toDouble());
+  }
+
+
 
 
 
@@ -347,12 +353,60 @@ class _MultImageState extends State<MultImage> {
                                     padding: EdgeInsets.symmetric(horizontal: 5.0),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(10.0), // Rounded corners
-                                      child: Container(
-                                        width: 50, // Adjust the image width as needed
-                                        height: 50, // Adjust the image height as needed
-                                        child: Image.file(
-                                          File(savedImagePaths[index]),
-                                          fit: BoxFit.cover, // Ensures the image covers the container
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          showDialog(
+                                            context: context,
+                                            builder: (BuildContext context) {
+                                              return Dialog(
+                                                backgroundColor: Colors.transparent, // Makes background transparent
+                                                child: FutureBuilder(
+                                                  future: _getImageSize(File(savedImagePaths[index])),
+                                                  builder: (BuildContext context, AsyncSnapshot<Size> snapshot) {
+                                                    if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
+                                                      // Calculate the best width and height for the image based on screen size
+                                                      var screenWidth = MediaQuery.of(context).size.width;
+                                                      var screenHeight = MediaQuery.of(context).size.height;
+                                                      var imageSize = snapshot.data!;
+                                                      var widthRatio = screenWidth / imageSize.width;
+                                                      var heightRatio = screenHeight / imageSize.height;
+                                                      var bestRatio = widthRatio < heightRatio ? widthRatio : heightRatio;
+                                                      var displayWidth = imageSize.width * bestRatio;
+                                                      var displayHeight = imageSize.height * bestRatio;
+
+                                                      return Container(
+                                                        width: displayWidth,
+                                                        height: displayHeight,
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white,
+                                                          borderRadius: BorderRadius.circular(20), // Rounded corners for the dialog
+                                                        ),
+                                                        child: ClipRRect(
+                                                          borderRadius: BorderRadius.circular(15.0), // Rounded corners for the image
+                                                          child: Image.file(
+                                                            File(savedImagePaths[index]),
+                                                            width: displayWidth,
+                                                            height: displayHeight,
+                                                            fit: BoxFit.cover,
+                                                          ),
+                                                        ),
+                                                      );
+                                                    } else {
+                                                      return CircularProgressIndicator(); // Show loading indicator while waiting
+                                                    }
+                                                  },
+                                                ),
+                                              );
+                                            },
+                                          );
+                                        },
+                                        child: Container(
+                                          width: 50, // Adjust the image width as needed
+                                          height: 50, // Adjust the image height as needed
+                                          child: Image.file(
+                                            File(savedImagePaths[index]),
+                                            fit: BoxFit.cover, // Ensures the image covers the container
+                                          ),
                                         ),
                                       ),
                                     ),

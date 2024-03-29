@@ -4,6 +4,7 @@ class Assets {
 
   static const String assetsCloud = 'assets/cloud.png';
   static const String assetsCountWithImage = 'assets/count_with_image.png';
+  static const String assetsFarmerbuddyBg = 'assets/FarmerbuddyBg.png';
   static const String assetsIcons8Hygrometer = 'assets/icons8-hygrometer.gif';
   static const String assetsIcons8Rain = 'assets/icons8-rain.gif';
   static const String assetsIcons8RainCloud = 'assets/icons8-rain-cloud.gif';

@@ -211,6 +211,172 @@ class FarmingDashboard extends StatelessWidget {
   }
 }
 
+// class FarmingDashboard extends StatelessWidget {
+//   @override
+//   Widget build(BuildContext context) {
+//     List<String> titles = [
+//       'COUNT FROM IMAGE',
+//       'LIVE COUNTING',
+//       'COUNT WITH CLOUD',
+//       'TRAINING',
+//       'AGRICULTURAL SUPPORT',
+//       'CUSTOMER SUPPORT',
+//     ];
+//
+//     List<Widget> icons = [
+//       Image.asset('assets/count_with_image.png', width: 80.0, height: 80.0),
+//       Image.asset('assets/live_vid_count_icon.png', width: 100.0, height: 100.0),
+//       Image.asset('assets/cloud.png', width: 100.0, height: 100.0),
+//       Image.asset('assets/training.png', width: 100.0, height: 100.0),
+//       Image.asset('assets/support_agr.png', width: 80.0, height: 80.0),
+//       Image.asset('assets/support.png', width: 100.0, height: 100.0),
+//     ];
+//
+//     List<Widget> destinations = [
+//       ImageHomeApp(),
+//       VideoPage(),
+//       ServerPage(),
+//       TestApp(),
+//       // Add your other destination widgets here
+//     ];
+//
+//     return Container(
+//       decoration: BoxDecoration(
+//         image: DecorationImage(
+//           image: AssetImage("assets/FarmerbuddyBg.png"), // Specify your image path
+//           fit: BoxFit.cover, // This will cover the entire background
+//         ),
+//       ),
+//       child: Scaffold(
+//         backgroundColor: Colors.transparent, // Make scaffold background transparent
+//         body: Column(
+//           crossAxisAlignment: CrossAxisAlignment.stretch,
+//           children: [
+//             SafeArea(
+//               child: Padding(
+//                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+//                 child: Material(
+//                   elevation: 0.1,
+//                   color: Color(0xFFF9FAF2).withOpacity(0.5), // Optional: make top bar slightly transparent
+//                   borderRadius: BorderRadius.circular(5.0),
+//                   child: Container(
+//                     padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+//                     child: Row(
+//                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+//                       children: <Widget>[
+//                         Icon(Icons.menu, color: Colors.green),
+//                         Text(
+//                           'Farmer Buddy',
+//                           style: TextStyle(
+//                             color: Colors.green,
+//                             fontWeight: FontWeight.bold,
+//                             fontSize: 24.0,
+//                           ),
+//                         ),
+//                         Icon(Icons.notifications, color: Colors.green),
+//                       ],
+//                     ),
+//                   ),
+//                 ),
+//               ),
+//             ),
+//             Expanded(
+//               child: SingleChildScrollView(
+//                 child: Container(
+//                   padding: EdgeInsets.fromLTRB(20, 0, 20, 0), // Reduced top padding
+//                   child: GridView.custom(
+//                     shrinkWrap: true,
+//                     physics: NeverScrollableScrollPhysics(),
+//                     gridDelegate: SliverWovenGridDelegate.count(
+//                       crossAxisCount: 2,
+//                       mainAxisSpacing: 0.3,
+//                       crossAxisSpacing: 0.3,
+//                       pattern: [
+//                         WovenGridTile(1),
+//                         WovenGridTile(
+//                           5.5 / 6.5,
+//                           crossAxisRatio: 0.95,
+//                           alignment: AlignmentDirectional.centerEnd,
+//                         ),
+//                       ],
+//                     ),
+//                     childrenDelegate: SliverChildBuilderDelegate(
+//                           (context, index) {
+//                         int row = index ~/ 2; // Integer division to find row
+//                         int col = index % 2; // Modulo to find column
+//                         Color bgColor = (row + col) % 2 == 0 ? Color(0x1A66ff33) : Color(0x33c7e600);
+//
+//                         return Material(
+//                           elevation: 0.8, // The elevation provides the shadow
+//                           borderRadius: BorderRadius.circular(30), // Consistent with your Container's border radius
+//                           shadowColor: Colors.green.shade900.withOpacity(0.2), // Custom shadow color
+//                           child: InkWell(
+//                             onTap: () {
+//                               Navigator.push(
+//                                 context,
+//                                 MaterialPageRoute(builder: (context) => destinations[index % destinations.length]),
+//                               );
+//                             },
+//                             child: Container(
+//                               decoration: BoxDecoration(
+//                                 color: bgColor, // Use calculated background color
+//                                 borderRadius: BorderRadius.circular(30),
+//                               ),
+//                               child: Column(
+//                                 mainAxisAlignment: MainAxisAlignment.center,
+//                                 children: <Widget>[
+//                                   icons[index], // Directly use the widget without wrapping it in an Icon widget
+//                                   Padding(
+//                                     padding: const EdgeInsets.only(top: 8.0), // Add some spacing between the icon and text
+//                                     child: Text(
+//                                       titles[index],
+//                                       textAlign: TextAlign.center,
+//                                       style: TextStyle(
+//                                         color: Colors.green[800], // Example style
+//                                         fontWeight: FontWeight.bold,
+//                                         fontSize: 16,
+//                                       ),
+//                                     ),
+//                                   ),
+//                                 ],
+//                               ),
+//                             ),
+//                           ),
+//                         );
+//                       },
+//                       childCount: titles.length, // Number of tiles
+//                     ),
+//                   ),
+//                 ),
+//               ),
+//             ),
+//             // Weather Data Widget
+//             Container(
+//               padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
+//               child: Column(
+//                 children: [
+//                   // Assuming you want to display a single row of live weather data
+//                   FutureBuilder<Position>(
+//                     future: getCurrentLocation(),
+//                     builder: (context, snapshot) {
+//                       if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
+//                         return LiveWeatherWidget();
+//                       } else if (snapshot.hasError) {
+//                         return Text("Error fetching location");
+//                       }
+//                       return CircularProgressIndicator();
+//                     },
+//                   ),
+//                 ],
+//               ),
+//             ),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
+
 
 class WeatherInfo extends StatelessWidget {
   final String title;
