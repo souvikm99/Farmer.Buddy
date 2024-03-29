@@ -331,7 +331,7 @@ class _MultImageState extends State<MultImage> {
                                 ),
                                 child: _objectModel!.renderBoxesOnImage(_image!, objDetect),
                                 width: double.infinity,
-                                height: 230,
+                                height: 250,
                               ),
                             )
 
@@ -339,7 +339,7 @@ class _MultImageState extends State<MultImage> {
                               'assets/loading_icon_green_banner.png',
                               fit: BoxFit.cover,
                               width: double.infinity,
-                              height: 230,
+                              height: 250,
                             ),
 
                             Container(
@@ -420,7 +420,7 @@ class _MultImageState extends State<MultImage> {
                             Padding(
                               padding: const EdgeInsets.fromLTRB(0, 5.0, 0, 5.0),
                               child: Container(
-                                height: 160,
+                                height: 200,
                                 child: SingleChildScrollView(
                                   child: Column(
                                     children: detectionResults.entries.map((entry) =>
@@ -429,12 +429,12 @@ class _MultImageState extends State<MultImage> {
                                 ),
                               ),
                             ),
-                            Container(
-                              height: 130,
-                              child: BarChartWidget(
-                                data: detectionResults,
-                              ),
-                            ),
+                            // Container(
+                            //   height: 130,
+                            //   child: BarChartWidget(
+                            //     data: detectionResults,
+                            //   ),
+                            // ),
 
                           ],
                         ),
@@ -456,38 +456,50 @@ class _MultImageState extends State<MultImage> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(0),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  child: Column(
                     children: <Widget>[
-                      ElevatedButton(
-                        onPressed: runObjectDetection,
-                        child: Text('Add Images', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFFF7DC11),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
+                      Container(
+                        // You can adjust the height of the container if you want some space
+                        padding: const EdgeInsets.all(5.0),
+                        height: 130.0, // For example, set a height or keep it empty for no space
+                        child: BarChartWidget(
+                          data: detectionResults,
                         ),
                       ),
-                      ElevatedButton(
-                        onPressed: checkAndExportToCSV,
-                        child: Text('Export CSV', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFFEDAC4A),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: <Widget>[
+                          ElevatedButton(
+                            onPressed: runObjectDetection,
+                            child: Text('Add Images', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFFF7DC11),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      ElevatedButton(
-                        onPressed: shareDetectionImage,
-                        child: Icon(Icons.share),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFF66ff99),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
+                          ElevatedButton(
+                            onPressed: checkAndExportToCSV,
+                            child: Text('Export CSV', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFFEDAC4A),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                            ),
                           ),
-                        ),
+                          ElevatedButton(
+                            onPressed: shareDetectionImage,
+                            child: Icon(Icons.share),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF66ff99),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

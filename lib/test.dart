@@ -1,56 +1,52 @@
-import 'dart:ui' as ui;
-import 'package:flutter/widgets.dart';
+import 'dart:io' as io;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'dart:async';
-import 'package:flutter/services.dart';
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
-import 'package:flutter_pytorch/pigeon.dart';
-import 'package:flutter_pytorch/flutter_pytorch.dart';
-import 'package:object_detection/LoaderState.dart';
 import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_pytorch/flutter_pytorch.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart'; // Add this line
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'dart:async';
+import 'scraps/test_overlay.dart';
+import 'dart:math' as math;
 
+import 'main.dart'; // Ensure this import points to your main.dart where 'cameras' list is defined
 
 class TestApp extends StatefulWidget {
+  const TestApp({super.key});
+
   @override
-  _TestAppState createState() => _TestAppState();
+  State<TestApp> createState() => _TestAppState();
 }
 
 class _TestAppState extends State<TestApp> {
-
-  ModelObjectDetection? _objectModel; // Make nullable
-  String? _imagePrediction;
-  List? _prediction;
-  File? _image;
-  ImagePicker _picker = ImagePicker();
-  bool objectDetection = false;
-  List<ResultObjectDetection?> objDetect = [];
-  bool firststate = false;
-  bool message = true;
-  Map<String, int> uniqueObjectCounts = {};
-  // Define a dictionary to store detection results and counts
-  Map<String, int> detectionResults = {};
-
-  GlobalKey _repaintBoundaryKey = GlobalKey();
-
-  List<String> savedImagePaths = [];
-
-
+  late CameraController cameraController;
+  bool _isCameraInitialized = false;
+  CameraImage? imgCamera;
+  bool isWorking = false;
+  late ModelObjectDetection _objectModel;
+  List<Box> boxes = [];
+  final GlobalKey cameraPreviewKey = GlobalKey();
+  int frameSkipCount = 0;
+  Timer? _debounce;
+  String inferenceTime = "Inference time: 0ms"; // Variable to store inference time
+  EuclideanDistTracker tracker = EuclideanDistTracker();
+  // New mapping for class-wise tracking of unique IDs
+  Map<String, Set<int>> classWiseTracking = {};
+  // Global dictionary to keep track of total trackwise counting
+  Map<String, int> totalClassCounts = {};
 
 
   @override
   void initState() {
     super.initState();
     loadModel().then((_) {
-      // Auto-start object detection after model is loaded
-      runObjectDetection();
+      initCamera();
+    }).catchError((error) {
+      print("Error loading model: $error");
     });
   }
 
@@ -58,71 +54,68 @@ class _TestAppState extends State<TestApp> {
     String pathObjectDetectionModel = "assets/models/best_optimized.torchscript";
     try {
       _objectModel = await FlutterPytorch.loadObjectDetectionModel(
-          pathObjectDetectionModel, 14, 640, 640,
-          labelPath: "assets/labels/lb2.txt");
-      print("Model loaded successfully");
+          pathObjectDetectionModel, 14, 640, 640, labelPath: "assets/labels/lb2.txt");
     } catch (e) {
       print("Error loading model: $e");
-      // Consider showing an error message to the user
+      rethrow;
     }
   }
 
-  void handleTimeout() {
-    // callback function
-    // Do some work.
-    setState(() {
-      firststate = true;
+  // void initCamera() {
+  //   cameraController = CameraController(cameras![0], ResolutionPreset.high);
+  //   cameraController.initialize().then((_) {
+  //     if (!mounted) {
+  //       return;
+  //     }
+  //     setState(() {
+  //       cameraController.startImageStream((imageFromStream) {
+  //         if (!isWorking && frameSkipCount++ % 5 == 0) {
+  //           isWorking = true;
+  //           imgCamera = imageFromStream;
+  //           runObjectDetection();
+  //         }
+  //       });
+  //     });
+  //   }).catchError((error) {
+  //     print("Error initializing camera: $error");
+  //   });
+  // }
+
+  void initCamera() {
+    cameraController = CameraController(cameras![0], ResolutionPreset.high);
+    cameraController.initialize().then((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isCameraInitialized = true;
+        cameraController.startImageStream((imageFromStream) {
+          if (!isWorking && frameSkipCount++ % 5 == 0) {
+            isWorking = true;
+            imgCamera = imageFromStream;
+            runObjectDetection();
+          }
+        });
+      });
+    }).catchError((error) {
+      print("Error initializing camera: $error");
     });
   }
 
-  Timer scheduleTimeout([int milliseconds = 10000]) =>
-      Timer(Duration(milliseconds: milliseconds), handleTimeout);
-
-  // Method to count the total number of unique objects per class
-  void countUniqueObjects() {
-    uniqueObjectCounts.clear(); // Clear previous counts
-    for (var element in objDetect) {
-      if (element != null) {
-        // Check if element is not null
-        var className = element.className;
-        if (className != null) {
-          uniqueObjectCounts[className] =
-              (uniqueObjectCounts[className] ?? 0) + 1;
-        }
-      }
-    }
-  }
-
-  //running detections on image
   Future<void> runObjectDetection() async {
-    if (_objectModel == null) {
-      print("Model not loaded. Please load the model before running object detection.");
-      return;
-    }
+    if (!_isCameraInitialized || imgCamera == null || !mounted) return; // Check if the camera is initialized here
+    final stopwatch = Stopwatch()..start(); // Start the stopwatch
 
-    setState(() {
-      firststate = false;
-      message = false;
-    });
-    //pick an image
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
-    objDetect = (await _objectModel?.getImagePrediction(
-        await File(image!.path).readAsBytes(),
-        minimumScore: 0.1,
-        IOUThershold: 0.3))!;
+    final previewSize = cameraPreviewKey.currentContext?.findRenderObject()?.semanticBounds.size;
 
-    // Update dictionary with detection results
-    objDetect.forEach((element) {
-      if (element != null && element.className != null) {
-        String className = element.className!;
-        detectionResults[className] = (detectionResults[className] ?? 0) + 1;
-      }
-    });
+    final objDetect = await _objectModel.getImagePredictionFromBytesList(
+      imgCamera!.planes.map((plane) => plane.bytes).toList(),
+      imgCamera!.width,
+      imgCamera!.height,
+    );
 
-    // Print the dictionary
-    print('Detection Results: $detectionResults');
-
-    objDetect.forEach((element) {
+    List<Box> newBoxes = [];
+    for (var element in objDetect) {
       print({
         "score": element?.score,
         "className": element?.className,
@@ -136,15 +129,38 @@ class _TestAppState extends State<TestApp> {
           "bottom": element?.rect.bottom,
         },
       });
-    });
-    countUniqueObjects(); // Count unique objects after detection
-    saveDetectionImage();
-    scheduleTimeout(5 * 1000);
+
+      final scaleW = previewSize?.width ?? MediaQuery.of(context).size.width;
+      final scaleH = previewSize?.height ?? MediaQuery.of(context).size.height;
+
+      double left = element!.rect.left * scaleW;
+      double top = element.rect.top * scaleH;
+      double width = element.rect.width * scaleW;
+      double height = element.rect.height * scaleH;
+      String className = element.className ?? "Unknown";
+
+      newBoxes.add(Box(
+        top: top,
+        left: left,
+        width: width,
+        height: height,
+        color: Colors.blue,
+        className: className,
+        score: element.score,
+      ));
+    }
+
+    tracker.update(newBoxes);
+
+    if (!mounted) return; // Check if the widget is still in the tree before calling setState
+    updateBoxes(newBoxes);
+    isWorking = false;
+    stopwatch.stop(); // Stop the stopwatch
+    if (!mounted) return; // Another check before calling setState
     setState(() {
-      _image = File(image!.path);
+      inferenceTime = "Inference: ${stopwatch.elapsedMilliseconds}ms"; // Update inference time
     });
   }
-
 
   Future<void> requestPermissions() async {
     var status = await Permission.storage.status;
@@ -159,19 +175,18 @@ class _TestAppState extends State<TestApp> {
     exportToCSV();
   }
 
-
   Future<void> exportToCSV() async {
     // Ensure permissions are granted
     await requestPermissions();
 
-    // Initialize the CSV data with headers
+    // Convert the data to CSV format
     List<List<dynamic>> csvData = [
       ['Class', 'Count'],
     ];
 
-    // Fill csvData with detectionResults
-    detectionResults.forEach((key, value) {
-      csvData.add([key, value]);
+    // Fill csvData with totalClassCounts
+    totalClassCounts.forEach((className, count) {
+      csvData.add([className, count]);
     });
 
     // Convert the data to CSV format
@@ -179,13 +194,13 @@ class _TestAppState extends State<TestApp> {
 
     try {
       // Get the temporary directory
-      final Directory tempDir = await getTemporaryDirectory();
+      // Get the temporary directory
+      final io.Directory tempDir = await getTemporaryDirectory();
       final String filePath = '${tempDir.path}/detection_counts.csv';
 
       // Save the CSV file at the path
-      final File file = File(filePath);
+      final io.File file = io.File(filePath);
       await file.writeAsString(csv);
-
       // Log the file path or share the file
       print('CSV file saved temporarily at $filePath');
       Share.shareFiles([filePath], text: 'Here is the exported CSV file.');
@@ -194,388 +209,229 @@ class _TestAppState extends State<TestApp> {
     }
   }
 
-  Future<void> saveDetectionImage() async {
-    try {
-      RenderObject? renderObject = _repaintBoundaryKey.currentContext?.findRenderObject();
-      if (renderObject != null && renderObject is RenderRepaintBoundary) {
-        ui.Image image = await renderObject.toImage(pixelRatio: 3.0);
-        ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData != null) {
-          Uint8List pngBytes = byteData.buffer.asUint8List();
-          final String formattedDateTime = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
-          final directory = await getApplicationDocumentsDirectory();
-          final imagePath = await File('${directory.path}/detection_image_$formattedDateTime.png').create();
-          await imagePath.writeAsBytes(pngBytes);
 
-          setState(() { // This ensures UI updates when a new image is saved
-            savedImagePaths.add(imagePath.path);
-          });
-
-          print("Image saved to $imagePath");
-        } else {
-          print("Byte data is null");
-        }
-      } else {
-        print("Context is null or RenderObject is not a RenderRepaintBoundary.");
+  void updateBoxes(List<Box> newBoxes) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          boxes = newBoxes;
+        });
       }
-    } catch (e) {
-      print("Error saving detection image: $e");
-    }
+    });
   }
 
-
-
-
-  Future<void> shareDetectionImage() async {
-    try {
-      RenderRepaintBoundary boundary =
-      _repaintBoundaryKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      Uint8List pngBytes = byteData!.buffer.asUint8List();
-
-      // Get the current date and time
-      final String formattedDateTime = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
-
-
-      final directory = await getApplicationDocumentsDirectory();
-      // Append the date and time to the filename
-      final imagePath = await File('${directory.path}/detection_image_$formattedDateTime.jpg').create();
-      await imagePath.writeAsBytes(pngBytes);
-
-
-
-      Share.shareFiles([imagePath.path], text: 'Check out these object detection results!');
-    } catch (e) {
-      print("Error sharing detection image: $e");
+  @override
+  void dispose() {
+    if (_isCameraInitialized) { // Only attempt to stop and dispose if initialized
+      cameraController.stopImageStream();
+      cameraController.dispose();
     }
+    _debounce?.cancel();
+    super.dispose();
   }
-
-
-
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      home: Scaffold(
-        backgroundColor: Colors.white,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: _isCameraInitialized
+            ? Column(
           children: [
-            // SafeArea(
-            //   child: Padding(
-            //     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            //     child: Material(
-            //       elevation: 0.1,
-            //       color: Color(0xFFF9FAF2),
-            //       borderRadius: BorderRadius.circular(5.0),
-            //       child: Container(
-            //         padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-            //         child: Row(
-            //           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            //           children: <Widget>[
-            //             Icon(Icons.menu, color: Colors.green), // Menu icon
-            //             Text(
-            //               'Farmer Buddy',
-            //               style: TextStyle(
-            //                 color: Colors.green, // Adjust the color to match your brand color
-            //                 fontWeight: FontWeight.bold,
-            //                 fontSize: 24.0, // Adjust the font size to your preference
-            //               ),
-            //             ),
-            //             Icon(Icons.notifications, color: Colors.green), // Notifications icon
-            //           ],
-            //         ),
-            //       ),
-            //     ),
-            //   ),
-            // ),
             Expanded(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(0, 5.0, 0, 0), // Reduced top padding
-                child: ListView(
-                  children: <Widget>[
-                    Card(
-                      elevation: 0,
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(10.0),
-                          topRight: Radius.circular(10.0),
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(10.0),
-                          topRight: Radius.circular(10.0),
-                        ),
-                        child: Column(
-                          children: [
-                            _repaintBoundaryKey != null && _image != null
-                                ? RepaintBoundary(
-                              key: _repaintBoundaryKey,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  // color: Colors.white, // Container background color
-                                  borderRadius: BorderRadius.all(Radius.circular(10.0)), // This is necessary if you have a border or shadow
-                                ),
-                                child: _objectModel!.renderBoxesOnImage(_image!, objDetect),
-                                width: double.infinity,
-                                height: 230,
-                              ),
-                            )
-
-                                : Image.asset(
-                              'assets/loading_icon_green_banner.png',
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: 230,
-                            ),
-
-                            Container(
-                              height: 50, // Adjust the container height as needed
-                              padding: EdgeInsets.symmetric(vertical: 10),
-                              child: ListView.builder(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: savedImagePaths.length,
-                                itemBuilder: (context, index) {
-                                  return Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 5.0),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(10.0), // Rounded corners
-                                      child: Container(
-                                        width: 50, // Adjust the image width as needed
-                                        height: 50, // Adjust the image height as needed
-                                        child: Image.file(
-                                          File(savedImagePaths[index]),
-                                          fit: BoxFit.cover, // Ensures the image covers the container
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-
-
-
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(0, 5.0, 0, 5.0),
-                              child: Container(
-                                height: 160,
-                                child: SingleChildScrollView(
-                                  child: Column(
-                                    children: detectionResults.entries.map((entry) =>
-                                        CropCounter(crop: entry.key, count: entry.value)).toList(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Container(
-                              height: 130,
-                              child: BarChartWidget(
-                                data: detectionResults,
-                              ),
-                            ),
-
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              child: Stack(
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(30.0)),
+                    child: CameraPreview(cameraController, key: cameraPreviewKey),
+                  ),
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: BoxPainter(boxes: boxes),
+                  ),
+                  _buildInferenceTimeDisplay(),
+                  _buildClassCountsDisplay(), // Display class counts here
+                ],
               ),
             ),
-
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Padding(
-                padding: const EdgeInsets.all(0.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(0),
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white, // Container with white background
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(30.0),
+                  topRight: Radius.circular(30.0),
+                ),
+              ),
+              padding: EdgeInsets.all(16.0),
+              child: ElevatedButton(
+                onPressed: () {
+                  // Implement your export CSV functionality
+                  checkAndExportToCSV();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepOrange, // Button background color
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18.0),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: <Widget>[
-                      ElevatedButton(
-                        onPressed: runObjectDetection,
-                        child: Text('Add Images', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFFF7DC11),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                      ),
-                      ElevatedButton(
-                        onPressed: checkAndExportToCSV,
-                        child: Text('Export CSV', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFFEDAC4A),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                      ),
-                      ElevatedButton(
-                        onPressed: shareDetectionImage,
-                        child: Icon(Icons.share),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFF66ff99),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                      ),
-                    ],
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text(
+                    'Export CSV',
+                    style: TextStyle(
+                      fontSize: 20.0,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white, // Button text color
+                    ),
                   ),
                 ),
               ),
             ),
           ],
+        )
+            : Center(child: CircularProgressIndicator()), // Show loading spinner until the camera is ready
+      ),
+    );
+  }
+
+
+  Widget _buildClassCountsDisplay() {
+    // Function to build display string for counts
+    String buildCountsDisplay(Map<String, int> counts) {
+      return counts.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+    }
+
+    // Container for "Current" counts
+// Updated Container for "Current" counts with fixed label and scrollable counts
+    Widget currentCountsContainer() {
+      return Container(
+        width: MediaQuery.of(context).size.width - 20,
+        margin: EdgeInsets.only(bottom: 8.0), // Space between the containers
+        decoration: BoxDecoration(
+          color: Color(0x1A66ff33), // Semi-transparent green color
+          borderRadius: BorderRadius.circular(8),
         ),
-      ),
-    );
-  }
-
-}
-
-
-class CropCounter extends StatelessWidget {
-  final String crop;
-  final int count;
-
-  CropCounter({required this.crop, required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: <Widget>[
-          Container(
-            alignment: Alignment.center,
-            width: 160, // Fixed width
-            height: 30, // Fixed height
-            decoration: BoxDecoration(
-              color: Colors.grey[200], // Background color
-              borderRadius: BorderRadius.circular(10), // Rounded corners
-            ),
-            child: Text(
-              crop,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center, // Center text
-            ),
-          ),
-          Container(
-            alignment: Alignment.center,
-            width: 160, // Fixed width
-            height: 30, // Fixed height
-            decoration: BoxDecoration(
-              color: Colors.grey[200], // Background color
-              borderRadius: BorderRadius.circular(10), // Rounded corners
-            ),
-            child: Text(
-              '$count',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center, // Center text
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-
-class BarChartWidget extends StatelessWidget {
-  final Map<String, int> data;
-
-  BarChartWidget({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    List<BarChartGroupData> barGroups = [];
-    double maxY = data.values.fold(0, (max, v) => max! > v ? max : v.toDouble());
-
-    int index = 0;
-    data.forEach((key, value) {
-      barGroups.add(
-        BarChartGroupData(
-          x: index,
-          barRods: [
-            BarChartRodData(
-              toY: value.toDouble(),
-              gradient: LinearGradient(
-                colors: [Colors.deepPurpleAccent, Colors.purpleAccent], // Refined gradient colors
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                "Current:",
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
               ),
-              width: 5, // Adjusted bar width for a sleeker look
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              decoration: BoxDecoration(
+                // color: Color(0x1A66ff33), // Same as parent for seamless design
+                borderRadius: BorderRadius.circular(8),
+              ),
+              // Using ConstrainedBox to specify height
+              // constraints: BoxConstraints(maxHeight: 100), // Set a maximum height
+              height: 60,
+              child: SingleChildScrollView(
+                child: Text(
+                  buildCountsDisplay(tracker.classCounts),
+                  style: TextStyle(fontSize: 12, color: Colors.white),
+                ),
+              ),
             ),
           ],
         ),
       );
-      index++;
-    });
+    }
 
-    return Container(
-      height: 130, // Reduced height for compactness
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 12), // Adjusted padding
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: Colors.grey, // Set border color
-          width: 0.5, // Set border width
+// Updated Container for "Total" counts with fixed label and scrollable counts
+    Widget totalCountsContainer() {
+      return Container(
+        width: MediaQuery.of(context).size.width - 20,
+        decoration: BoxDecoration(
+          color: Color(0x3300FFF0), // Semi-transparent teal color
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                "Total:",
+                style: TextStyle(fontSize: 12,fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              decoration: BoxDecoration(
+                // color: Color(0x3300FFF0), // Same as parent for seamless design
+                borderRadius: BorderRadius.circular(8),
+              ),
+              // Using ConstrainedBox to specify height
+              // constraints: BoxConstraints(maxHeight: 120), // Adjust this as needed
+              height: 100,
+              child: SingleChildScrollView(
+                child: Text(
+                  buildCountsDisplay(tracker.cumulativeClassCounts),
+                  style: TextStyle(fontSize: 12, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+
+    return Positioned(
+      bottom: 20,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 10.0),
+        child: Container(
+          width: MediaQuery.of(context).size.width - 20,
+          decoration: BoxDecoration(
+            // color: Colors.deepPurple,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SingleChildScrollView(
+                child: currentCountsContainer(),
+              ),
+              SizedBox(height: 5), // Gap between the sections
+              SingleChildScrollView(
+                child: totalCountsContainer(),
+              ),
+            ],
+          ),
         ),
       ),
-      child: BarChart(
-        BarChartData(
-          maxY: maxY,
-          titlesData: FlTitlesData(
-            show: true,
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (double value, TitleMeta meta) {
-                  final String text = data.keys.elementAt(value.toInt());
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 3.0),
-                    child: Text(text, style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 4)), // Smaller font size
-                  );
-                },
-                interval: 1,
-                reservedSize: 18, // Adjusted for smaller font size
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (double value, TitleMeta meta) {
-                  return Text(value.toInt().toString(), style: TextStyle(fontSize: 5)); // Reduced font size for Y-axis
-                },
-                interval: 1,
-                reservedSize: 28, // Adjusted reserved size
-              ),
-            ),
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          barGroups: barGroups,
-          borderData: FlBorderData(show: false), // Turned off for a cleaner look
-          gridData: FlGridData(
-            show: false, // Turned off grid lines for a minimalistic design
+    );
+  }
+
+
+
+
+  Widget _buildInferenceTimeDisplay() {
+    // Creates a more visually appealing display for the inference time
+    return Positioned(
+      top: 20,
+      left: 20,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        decoration: BoxDecoration(
+          color: Color(0x66EDAC4A), // Match the AppBar color
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: Text(
+          inferenceTime,
+          style: const TextStyle(
+            fontSize: 8,
+            color: Colors.white,
           ),
         ),
       ),
@@ -583,9 +439,223 @@ class BarChartWidget extends StatelessWidget {
   }
 }
 
+class Box {
+  final double top;
+  final double left;
+  final double width;
+  final double height;
+  final Color color;
+  final String className;
+  final double score;
+  int? id; // Nullable to accommodate boxes not yet assigned an ID
+
+  Box({
+    required this.top,
+    required this.left,
+    required this.width,
+    required this.height,
+    required this.color,
+    required this.className,
+    required this.score,
+    this.id,
+  });
+}
+
+
+class BoxPainter extends CustomPainter {
+  final List<Box> boxes;
+
+  BoxPainter({required this.boxes});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Color(0xFF005DFF) // Box color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5; // Border thickness
+
+    // Define the border radius of the corners
+    final Radius cornerRadius = Radius.circular(8.0);
+
+    for (var box in boxes) {
+      // Create a rounded rectangle from the bounding box coordinates
+      final roundedRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(box.left, box.top, box.width, box.height),
+        cornerRadius,
+      );
+      // Draw the rounded rectangle
+      canvas.drawRRect(roundedRect, paint);
+
+      // Prepare the text to display. Include the ID if available.
+      final String displayText = '${box.id != null ? "ID: ${box.id}, " : ""}${box.className} ${(box.score * 100).toStringAsFixed(2)}%';
+      final textStyle = TextStyle(
+        color: Color(0xFFCF46F1), // Text color
+        fontSize: 10,
+        backgroundColor: Colors.black54, // Background color for text
+      );
+      final textSpan = TextSpan(text: displayText, style: textStyle);
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      );
+
+      textPainter.layout(minWidth: 0, maxWidth: size.width);
+      // Adjust the offset if you want the text to appear above, below, or next to the box
+      final offset = Offset(box.left, box.top - 20); // Move the text a bit higher than the top of the box
+      textPainter.paint(canvas, offset);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true; // You could optimize this to only repaint when boxes change
+  }
+}
 
 
 
 
+// class EuclideanDistTracker {
+//   final Map<int, math.Point<double>> centerPoints = {};
+//   Map<int, int> lostFrames = {};
+//   int idCount = 0;
+//   final int maxLostFrames = 10;
+//
+//   void update(List<Box> boxes) {
+//     final Map<int, math.Point<double>> newCenterPoints = {};
+//     Map<int, int> newLostFrames = Map.from(lostFrames);
+//
+//     lostFrames.forEach((id, count) {
+//       newLostFrames[id] = count + 1;
+//     });
+//
+//     for (final box in boxes) {
+//       final cx = box.left + box.width / 2;
+//       final cy = box.top + box.height / 2;
+//       final currentCenter = math.Point<double>(cx, cy);
+//
+//       bool sameObjectDetected = false;
+//       int? closestId;
+//       double minDistance = double.infinity;
+//
+//       centerPoints.forEach((id, point) {
+//         final dist = math.sqrt(math.pow(currentCenter.x - point.x, 2) + math.pow(currentCenter.y - point.y, 2));
+//
+//         if (dist < minDistance) {
+//           minDistance = dist;
+//           closestId = id;
+//         }
+//       });
+//
+//       if (closestId != null && minDistance < 50.0) { // Assuming 50.0 as the distance threshold for matching
+//         newCenterPoints[closestId!] = currentCenter;
+//         newLostFrames.remove(closestId);
+//         sameObjectDetected = true;
+//         box.id = closestId; // Assign the tracked object's ID to the new detection
+//       }
+//
+//       if (!sameObjectDetected) {
+//         // This is a new object, assign a new ID
+//         box.id = idCount++;
+//         newCenterPoints[box.id!] = currentCenter;
+//       }
+//     }
+//
+//     // Remove objects that have been lost for too many frames
+//     newLostFrames.forEach((id, count) {
+//       if (count > maxLostFrames) {
+//         newLostFrames.remove(id);
+//         centerPoints.remove(id);
+//       }
+//     });
+//
+//     // Update tracking information with new detections
+//     centerPoints.clear();
+//     centerPoints.addAll(newCenterPoints);
+//     lostFrames = newLostFrames;
+//   }
+// }
+
+class EuclideanDistTracker {
+  final Map<int, math.Point<double>> centerPoints = {};
+  Map<int, int> lostFrames = {};
+  int idCount = 0;
+  final int maxLostFrames = 10;
+  Map<String, int> classCounts = {}; // For current frame counts
+  Map<String, Set<int>> cumulativeClassIds = {}; // Tracks unique IDs for each class cumulatively
+
+  void update(List<Box> boxes) {
+    final Map<int, math.Point<double>> newCenterPoints = {};
+    Map<int, int> newLostFrames = Map.from(lostFrames);
+
+    // Reset current frame class counts
+    classCounts.clear();
+
+    for (final box in boxes) {
+      final cx = box.left + box.width / 2;
+      final cy = box.top + box.height / 2;
+      final currentCenter = math.Point<double>(cx, cy);
+
+      bool sameObjectDetected = false;
+      int? closestId;
+      double minDistance = double.infinity;
+
+      centerPoints.forEach((id, point) {
+        final dist = math.sqrt((currentCenter.x - point.x) * (currentCenter.x - point.x) + (currentCenter.y - point.y) * (currentCenter.y - point.y));
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestId = id;
+        }
+      });
+
+      if (closestId != null && minDistance < 50.0) { // Threshold for matching
+        newCenterPoints[closestId!] = currentCenter;
+        newLostFrames.remove(closestId);
+        sameObjectDetected = true;
+        box.id = closestId; // Assign the tracked object's ID to the new detection
+      }
+
+      if (!sameObjectDetected) {
+        box.id = idCount;
+        newCenterPoints[idCount] = currentCenter;
+        idCount++;
+      }
+
+      // Update class count for the current frame
+      if (box.id != null) {
+        classCounts[box.className] = (classCounts[box.className] ?? 0) + 1;
+        // Update cumulative class-wise unique ID tracking
+        cumulativeClassIds.putIfAbsent(box.className, () => <int>{});
+        cumulativeClassIds[box.className]!.add(box.id!);
+      }
+    }
+
+    // Increment lost frame count for all tracked objects
+    lostFrames.forEach((id, count) {
+      newLostFrames[id] = count + 1;
+    });
+
+    // Remove objects that have been lost for too long
+    newLostFrames.forEach((id, count) {
+      if (count > maxLostFrames) {
+        newLostFrames.remove(id);
+        centerPoints.remove(id);
+      }
+    });
+
+    centerPoints.clear();
+    centerPoints.addAll(newCenterPoints);
+    lostFrames = newLostFrames;
+  }
+
+  // Getter to calculate and return cumulative class counts from unique IDs
+  Map<String, int> get cumulativeClassCounts {
+    Map<String, int> counts = {};
+    cumulativeClassIds.forEach((className, ids) {
+      counts[className] = ids.length; // The count is the number of unique IDs seen for this class
+    });
+    return counts;
+  }
+}
 
 
