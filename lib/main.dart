@@ -5,18 +5,29 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:object_detection/server_page.dart';
 import 'package:object_detection/test.dart';
+import 'package:object_detection/tflite_test.dart';
 import 'package:object_detection/video_page.dart';
 import 'package:camera/camera.dart';
 import 'ImageHomeScreen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-List<CameraDescription>? cameras;
-void main() async{
-  runApp(MyApp());
-  cameras = await availableCameras();
-}
+import 'image_mode_testing.dart';
 
+
+List<CameraDescription> cameras = [];
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // Ensure plugin services are initialized
+  try {
+    cameras = await availableCameras(); // Directly call availableCameras() function
+    runApp(MyApp());
+  } catch (e) {
+    print('Failed to get available cameras: $e');
+    // Optionally, run the app with an error message or alternative logic
+    // runApp(ErrorApp());
+  }
+}
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -60,7 +71,7 @@ class FarmingDashboard extends StatelessWidget {
       'LIVE COUNTING',
       'COUNT WITH CLOUD',
       'TRAINING',
-      'AGRICULTURAL SUPPORT',
+      'TEST MUL MODEL',
       'CUSTOMER SUPPORT'
     ];
     List<Widget> icons = [
@@ -77,6 +88,7 @@ class FarmingDashboard extends StatelessWidget {
       VideoPage(),
       ServerPage(),
       TestApp(),
+      MultImageTest(),
       // Add your other destination widgets here
     ];
 

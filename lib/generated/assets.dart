@@ -26,7 +26,17 @@ class Assets {
   static const String imagesDentskanload = 'images/dentskanload.gif';
   static const String labelsLabels = 'assets/labels/labels.txt';
   static const String labelsLb2 = 'assets/labels/lb2.txt';
+  static const String labelsLb3 = 'assets/labels/lb3.txt';
+  static const String labelsLb4 = 'assets/labels/lb4.txt';
+  static const String modelsBest25prune640 = 'assets/models/best_25prune_640.torchscript';
+  static const String modelsBestN = 'assets/models/best_n.tflite';
+  static const String modelsBestN320 = 'assets/models/best_n_320.torchscript';
+  static const String modelsBestNPruned = 'assets/models/best_n_pruned.torchscript';
   static const String modelsBestOptimized = 'assets/models/best_optimized.torchscript';
+  static const String modelsBestPruned640 = 'assets/models/best_pruned_640.torchscript';
+  static const String modelsBestV8s640 = 'assets/models/best_v8s_640.torchscript';
+  static const String modelsBestVnOptmzInplcPruned640 = 'assets/models/best_vn_optmz_inplc_pruned_640.torchscript';
+  static const String modelsYoloVxNewCropsData7cls = 'assets/models/yoloVx_new_crops_data_7cls.torchscript';
   static const String modelsYolov5s = 'assets/models/yolov5s.torchscript';
 
 }

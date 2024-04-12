@@ -55,11 +55,11 @@ class _MultImageState extends State<MultImage> {
   }
 
   Future<void> loadModel() async {
-    String pathObjectDetectionModel = "assets/models/best_optimized.torchscript";
+    String pathObjectDetectionModel = "assets/models/yolovl_kaggle_6cls.torchscript";
     try {
       _objectModel = await FlutterPytorch.loadObjectDetectionModel(
-          pathObjectDetectionModel, 14, 640, 640,
-          labelPath: "assets/labels/lb2.txt");
+          pathObjectDetectionModel, 6, 640, 640,
+          labelPath: "assets/labels/lb4.txt");
       print("Model loaded successfully");
     } catch (e) {
       print("Error loading model: $e");

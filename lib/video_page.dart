@@ -1,8 +1,14 @@
+import 'dart:io' as io;
+
+import 'package:csv/csv.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pytorch/flutter_pytorch.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:async';
 import 'scraps/test_overlay.dart';
 import 'dart:math' as math;
@@ -30,6 +36,9 @@ class _VideoPageState extends State<VideoPage> {
   EuclideanDistTracker tracker = EuclideanDistTracker();
   // New mapping for class-wise tracking of unique IDs
   Map<String, Set<int>> classWiseTracking = {};
+  // Global dictionary to keep track of total trackwise counting
+  Map<String, int> totalClassCounts = {};
+
 
   @override
   void initState() {
@@ -149,10 +158,55 @@ class _VideoPageState extends State<VideoPage> {
     stopwatch.stop(); // Stop the stopwatch
     if (!mounted) return; // Another check before calling setState
     setState(() {
-      inferenceTime = "Inference time: ${stopwatch.elapsedMilliseconds}ms"; // Update inference time
+      inferenceTime = "Inference: ${stopwatch.elapsedMilliseconds}ms"; // Update inference time
     });
   }
 
+  Future<void> requestPermissions() async {
+    var status = await Permission.storage.status;
+    if (!status.isGranted) {
+      await Permission.storage.request();
+    }
+  }
+
+  Future<void> checkAndExportToCSV() async {
+    await requestPermissions();
+    // Proceed with your exportToCSV logic only after permissions are granted
+    exportToCSV();
+  }
+
+  Future<void> exportToCSV() async {
+    // Ensure permissions are granted
+    await requestPermissions();
+
+    // Convert the data to CSV format
+    List<List<dynamic>> csvData = [
+      ['Class', 'Count'],
+    ];
+
+    // Fill csvData with cumulative class counts from tracker
+    tracker.cumulativeClassCounts.forEach((className, count) {
+      csvData.add([className, count]);
+    });
+
+    // Convert the data to CSV format
+    String csv = const ListToCsvConverter().convert(csvData);
+
+    try {
+      // Get the temporary directory
+      final io.Directory tempDir = await getTemporaryDirectory();
+      final String filePath = '${tempDir.path}/detection_counts.csv';
+
+      // Save the CSV file at the path
+      final io.File file = io.File(filePath);
+      await file.writeAsString(csv);
+      // Log the file path or share the file
+      print('CSV file saved temporarily at $filePath');
+      Share.shareFiles([filePath], text: 'Here is the exported CSV file.');
+    } catch (e) {
+      print('Error saving CSV file: $e');
+    }
+  }
 
 
 
@@ -180,34 +234,61 @@ class _VideoPageState extends State<VideoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Object Detector Live"),
-        backgroundColor: Colors.deepPurple, // Updated color
-        elevation: 0,
-      ),
-      backgroundColor: Colors.black, // Updated background color for consistency
+      backgroundColor: Colors.white,
       body: SafeArea(
-        child: _isCameraInitialized ?
-        // Stack(
-        //   children: <Widget>[
-        //     CameraPreview(cameraController, key: cameraPreviewKey),
-        //     CustomPaint(
-        //       size: Size.infinite,
-        //       painter: BoxPainter(boxes: boxes),
-        //     ),
-        //     _buildInferenceTimeDisplay(), // Updated UI for inference time display
-        //   ],
-        // )
-        //
-        Stack(
-          children: <Widget>[
-            CameraPreview(cameraController, key: cameraPreviewKey),
-            CustomPaint(
-              size: Size.infinite,
-              painter: BoxPainter(boxes: boxes),
+        child: _isCameraInitialized
+            ? Column(
+          children: [
+            Expanded(
+              child: Stack(
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(30.0)),
+                    child: CameraPreview(cameraController, key: cameraPreviewKey),
+                  ),
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: BoxPainter(boxes: boxes),
+                  ),
+                  _buildInferenceTimeDisplay(),
+                  _buildClassCountsDisplay(), // Display class counts here
+                ],
+              ),
             ),
-            _buildInferenceTimeDisplay(),
-            _buildClassCountsDisplay(), // Display class counts here
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white, // Container with white background
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(30.0),
+                  topRight: Radius.circular(30.0),
+                ),
+              ),
+              padding: EdgeInsets.all(16.0),
+              child: ElevatedButton(
+                onPressed: () {
+                  // Implement your export CSV functionality
+                  checkAndExportToCSV();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepOrange, // Button background color
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18.0),
+                  ),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text(
+                    'Export CSV',
+                    style: TextStyle(
+                      fontSize: 20.0,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white, // Button text color
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         )
             : Center(child: CircularProgressIndicator()), // Show loading spinner until the camera is ready
@@ -215,39 +296,115 @@ class _VideoPageState extends State<VideoPage> {
     );
   }
 
+
   Widget _buildClassCountsDisplay() {
-    // Building a display string for current and cumulative counts
+    // Function to build display string for counts
     String buildCountsDisplay(Map<String, int> counts) {
       return counts.entries.map((e) => '${e.key}: ${e.value}').join('\n');
     }
 
-    return Positioned(
-      top: 80,
-      right: 20,
-      child: Container(
-        padding: EdgeInsets.all(8),
+    // Container for "Current" counts
+// Updated Container for "Current" counts with fixed label and scrollable counts
+    Widget currentCountsContainer() {
+      return Container(
+        width: MediaQuery.of(context).size.width - 20,
+        margin: EdgeInsets.only(bottom: 8.0), // Space between the containers
         decoration: BoxDecoration(
-          color: Colors.deepPurple,
+          color: Color(0x1ADC1A1A), // Semi-transparent green color
           borderRadius: BorderRadius.circular(8),
         ),
-        child: RichText(
-          text: TextSpan(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                "Current:",
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              decoration: BoxDecoration(
+                // color: Color(0x1A66ff33), // Same as parent for seamless design
+                borderRadius: BorderRadius.circular(8),
+              ),
+              // Using ConstrainedBox to specify height
+              // constraints: BoxConstraints(maxHeight: 100), // Set a maximum height
+              height: 60,
+              child: SingleChildScrollView(
+                child: Text(
+                  buildCountsDisplay(tracker.classCounts),
+                  style: TextStyle(fontSize: 12, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+// Updated Container for "Total" counts with fixed label and scrollable counts
+    Widget totalCountsContainer() {
+      return Container(
+        width: MediaQuery.of(context).size.width - 20,
+        decoration: BoxDecoration(
+          color: Color(0x3300FFF0), // Semi-transparent teal color
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                "Total:",
+                style: TextStyle(fontSize: 12,fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              decoration: BoxDecoration(
+                // color: Color(0x3300FFF0), // Same as parent for seamless design
+                borderRadius: BorderRadius.circular(8),
+              ),
+              // Using ConstrainedBox to specify height
+              // constraints: BoxConstraints(maxHeight: 120), // Adjust this as needed
+              height: 100,
+              child: SingleChildScrollView(
+                child: Text(
+                  buildCountsDisplay(tracker.cumulativeClassCounts),
+                  style: TextStyle(fontSize: 12, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+
+    return Positioned(
+      bottom: 20,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 10.0),
+        child: Container(
+          width: MediaQuery.of(context).size.width - 20,
+          decoration: BoxDecoration(
+            // color: Colors.deepPurple,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              TextSpan(
-                text: "Current Frame:\n",
-                style: TextStyle(fontSize: 16, color: Colors.white), // Corrected styling here
+              SingleChildScrollView(
+                child: currentCountsContainer(),
               ),
-              TextSpan(
-                text: buildCountsDisplay(tracker.classCounts) + "\n\n",
-                style: TextStyle(fontSize: 14, color: Colors.white), // Corrected styling here
-              ),
-              TextSpan(
-                text: "Cumulative:\n",
-                style: TextStyle(fontSize: 16, color: Colors.white), // Corrected styling here
-              ),
-              TextSpan(
-                text: buildCountsDisplay(tracker.cumulativeClassCounts),
-                style: TextStyle(fontSize: 14, color: Colors.white), // Corrected styling here
+              SizedBox(height: 5), // Gap between the sections
+              SingleChildScrollView(
+                child: totalCountsContainer(),
               ),
             ],
           ),
@@ -255,6 +412,7 @@ class _VideoPageState extends State<VideoPage> {
       ),
     );
   }
+
 
 
 
@@ -266,13 +424,13 @@ class _VideoPageState extends State<VideoPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
         decoration: BoxDecoration(
-          color: Colors.deepPurple, // Match the AppBar color
+          color: Color(0x66EDAC4A), // Match the AppBar color
           borderRadius: BorderRadius.circular(8.0),
         ),
         child: Text(
           inferenceTime,
           style: const TextStyle(
-            fontSize: 16,
+            fontSize: 8,
             color: Colors.white,
           ),
         ),
@@ -312,19 +470,34 @@ class BoxPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.red
+      ..color = Color(0xFF005DFF) // Box color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
+      ..strokeWidth = 1.5; // Border thickness
+
+    // Define the border radius of the corners
+    final Radius cornerRadius = Radius.circular(8.0);
 
     for (var box in boxes) {
-      // Draw the rectangle
-      canvas.drawRect(Rect.fromLTWH(box.left, box.top, box.width, box.height), paint);
+      // Create a rounded rectangle from the bounding box coordinates
+      final roundedRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(box.left, box.top, box.width, box.height),
+        cornerRadius,
+      );
+      // Draw the rounded rectangle
+      canvas.drawRRect(roundedRect, paint);
 
       // Prepare the text to display. Include the ID if available.
       final String displayText = '${box.id != null ? "ID: ${box.id}, " : ""}${box.className} ${(box.score * 100).toStringAsFixed(2)}%';
-      final textStyle = TextStyle(color: Colors.red, fontSize: 12, backgroundColor: Colors.black54);
+      final textStyle = TextStyle(
+        color: Color(0xFFCF46F1), // Text color
+        fontSize: 10,
+        backgroundColor: Colors.black54, // Background color for text
+      );
       final textSpan = TextSpan(text: displayText, style: textStyle);
-      final textPainter = TextPainter(text: textSpan, textDirection: TextDirection.ltr);
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      );
 
       textPainter.layout(minWidth: 0, maxWidth: size.width);
       // Adjust the offset if you want the text to appear above, below, or next to the box

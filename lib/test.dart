@@ -51,10 +51,10 @@ class _TestAppState extends State<TestApp> {
   }
 
   Future<void> loadModel() async {
-    String pathObjectDetectionModel = "assets/models/best_optimized.torchscript";
+    String pathObjectDetectionModel = "assets/models/best_25prune_640.torchscript";
     try {
       _objectModel = await FlutterPytorch.loadObjectDetectionModel(
-          pathObjectDetectionModel, 14, 640, 640, labelPath: "assets/labels/lb2.txt");
+          pathObjectDetectionModel, 6, 640, 640, labelPath: "assets/labels/lb3.txt");
     } catch (e) {
       print("Error loading model: $e");
       rethrow;
@@ -184,8 +184,8 @@ class _TestAppState extends State<TestApp> {
       ['Class', 'Count'],
     ];
 
-    // Fill csvData with totalClassCounts
-    totalClassCounts.forEach((className, count) {
+    // Fill csvData with cumulative class counts from tracker
+    tracker.cumulativeClassCounts.forEach((className, count) {
       csvData.add([className, count]);
     });
 
@@ -193,7 +193,6 @@ class _TestAppState extends State<TestApp> {
     String csv = const ListToCsvConverter().convert(csvData);
 
     try {
-      // Get the temporary directory
       // Get the temporary directory
       final io.Directory tempDir = await getTemporaryDirectory();
       final String filePath = '${tempDir.path}/detection_counts.csv';
@@ -208,6 +207,7 @@ class _TestAppState extends State<TestApp> {
       print('Error saving CSV file: $e');
     }
   }
+
 
 
   void updateBoxes(List<Box> newBoxes) {
@@ -310,7 +310,7 @@ class _TestAppState extends State<TestApp> {
         width: MediaQuery.of(context).size.width - 20,
         margin: EdgeInsets.only(bottom: 8.0), // Space between the containers
         decoration: BoxDecoration(
-          color: Color(0x1A66ff33), // Semi-transparent green color
+          color: Color(0x1ADC1A1A), // Semi-transparent green color
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
