@@ -1,3 +1,15 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:00f93bb5b1faefdede8f6065df327522900fb0b8efee86bacf424fd947ed14bb
-size 303
+//
+//  Generated file. Do not edit.
+//
+
+// clang-format off
+
+#ifndef GENERATED_PLUGIN_REGISTRANT_
+#define GENERATED_PLUGIN_REGISTRANT_
+
+#include <flutter_linux/flutter_linux.h>
+
+// Registers Flutter plugins.
+void fl_register_plugins(FlPluginRegistry* registry);
+
+#endif  // GENERATED_PLUGIN_REGISTRANT_

@@ -1,3 +1,3 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:ecc700ee1b04eb6dadcc9a73eda3601da14462d5e8c63102732ac4382389affd
-size 19
+Apple
+Banana
+Orange
