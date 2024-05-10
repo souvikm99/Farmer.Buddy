@@ -1,5 +1,5 @@
 
-![Logo](SOUVIK_MTP_FINAL (1).jpg)
+![Logo](SOUVIK_MTP_FINAL_logo.jpg)
 
 
 # Farmer Buddy | Ai Based Android App for Farmers
