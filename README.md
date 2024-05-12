@@ -28,3 +28,12 @@ The app is also published in Google Playstore : https://play.google.com/store/ap
 ## Screenshots
 
 ![App Screenshot](SOUVIK_MTP_FINAL.jpg)
+
+
+## Features
+
+- Count on Images/Videos.
+- Switch between different models.
+- Use local or server model.
+- Download or share results in image or csv format.
+- See counts in graph visualization.
